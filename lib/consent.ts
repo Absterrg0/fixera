@@ -39,9 +39,13 @@ export function setConsent(input: { analytics: boolean; marketing: boolean }): C
   if (typeof window !== 'undefined') {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (err) {
+      console.warn('consent: failed to persist to localStorage', err);
+    }
+    try {
       window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: state }));
     } catch {
-      // localStorage unavailable; consent still effective for the session via the event
+      // ignore — listeners may not be set up yet
     }
   }
   return state;
@@ -57,6 +61,10 @@ export function clearConsent(): void {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.removeItem(STORAGE_KEY);
+  } catch (err) {
+    console.warn('consent: failed to clear localStorage', err);
+  }
+  try {
     window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: null }));
   } catch {
     // ignore

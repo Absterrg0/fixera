@@ -885,7 +885,7 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <Button
-                    onClick={() => window.open('/admin/audit-logs', '_blank')}
+                    onClick={() => window.open('/admin/audit-logs', '_blank', 'noopener,noreferrer')}
                     className="w-full bg-gradient-to-r from-slate-600 to-zinc-700 hover:from-slate-700 hover:to-zinc-800"
                   >
                     Open Audit Logs

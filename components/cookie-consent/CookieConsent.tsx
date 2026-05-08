@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
-import { getConsent, setConsent, type ConsentState } from '@/lib/consent'
+import { CONSENT_EVENT, getConsent, setConsent, type ConsentState } from '@/lib/consent'
+
+const STORAGE_KEY = 'fixera-consent-v1'
 
 export default function CookieConsent() {
   const [decided, setDecided] = useState<ConsentState | null | undefined>(undefined)
@@ -14,6 +16,17 @@ export default function CookieConsent() {
 
   useEffect(() => {
     setDecided(getConsent())
+
+    const refresh = () => setDecided(getConsent())
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY || e.key === null) refresh()
+    }
+    window.addEventListener(CONSENT_EVENT, refresh)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener(CONSENT_EVENT, refresh)
+      window.removeEventListener('storage', onStorage)
+    }
   }, [])
 
   if (decided === undefined) return null
@@ -38,7 +51,7 @@ export default function CookieConsent() {
   return (
     <>
       <div
-        role="dialog"
+        role="region"
         aria-label="Cookie consent"
         aria-live="polite"
         className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background p-4 shadow-lg sm:p-6"

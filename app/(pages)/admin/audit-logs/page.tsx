@@ -93,6 +93,8 @@ export default function AdminAuditLogsPage() {
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null)
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const logsAbortRef = useRef<AbortController | null>(null)
+  const statsAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     if (!loading && (!user || user.role !== 'admin')) {
@@ -133,10 +135,18 @@ export default function AdminAuditLogsPage() {
   }, [actionFilter, targetTypeFilter, statusFilter, fromDate, untilDate])
 
   const fetchLogs = useCallback(async () => {
+    logsAbortRef.current?.abort()
+    const controller = new AbortController()
+    logsAbortRef.current = controller
     setIsLoading(true)
     try {
-      const res = await authFetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/admin/audit-logs?${queryString}`)
+      const res = await authFetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/admin/audit-logs?${queryString}`,
+        { signal: controller.signal }
+      )
+      if (controller.signal.aborted) return
       const json = await res.json()
+      if (controller.signal.aborted) return
       if (!res.ok || !json.success) {
         toast.error(json?.msg || 'Failed to load audit logs')
         return
@@ -144,20 +154,29 @@ export default function AdminAuditLogsPage() {
       setLogs(json.data.logs as AuditLog[])
       setTotalPages(json.data.pagination.totalPages)
     } catch (err) {
+      if ((err as { name?: string })?.name === 'AbortError') return
       console.error('audit-logs fetch failed', err)
       toast.error('Failed to load audit logs')
     } finally {
-      setIsLoading(false)
+      if (!controller.signal.aborted) setIsLoading(false)
     }
   }, [queryString])
 
   const fetchStats = useCallback(async () => {
+    statsAbortRef.current?.abort()
+    const controller = new AbortController()
+    statsAbortRef.current = controller
     try {
-      const res = await authFetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/admin/audit-logs/stats?${statsQueryString}`)
+      const res = await authFetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/admin/audit-logs/stats?${statsQueryString}`,
+        { signal: controller.signal }
+      )
+      if (controller.signal.aborted) return
       const json = await res.json()
+      if (controller.signal.aborted) return
       if (res.ok && json.success) setStats(json.data as AuditStats)
     } catch {
-      // silent
+      // silent (includes AbortError)
     }
   }, [statsQueryString])
 
@@ -333,8 +352,17 @@ export default function AdminAuditLogsPage() {
                   {logs.map((log) => (
                     <tr
                       key={log._id}
-                      className="border-b last:border-0 cursor-pointer hover:bg-gray-50"
+                      className="border-b last:border-0 cursor-pointer hover:bg-gray-50 focus:outline-none focus:bg-gray-100"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Open details for audit log ${log.action} at ${new Date(log.createdAt).toLocaleString()}`}
                       onClick={() => setSelectedLog(log)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setSelectedLog(log)
+                        }
+                      }}
                     >
                       <td className="py-2 pr-3 text-xs text-gray-600 whitespace-nowrap">
                         {new Date(log.createdAt).toLocaleString()}
