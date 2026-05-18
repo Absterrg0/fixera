@@ -7,6 +7,7 @@ import SubNavbar from "@/components/SubNavbar";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ChatWidget from "@/components/chat/ChatWidget";
+import CookieConsent from "@/components/cookie-consent/CookieConsent";
 import JsonLd from "@/components/seo/JsonLd";
 import { organizationSchema, websiteSchema } from "@/lib/seo/jsonLd";
 import { SITE_NAME, SITE_DESCRIPTION, OG_DEFAULT_IMAGE, siteUrl, absoluteUrl } from "@/lib/seo/site";
@@ -73,6 +74,7 @@ export default function RootLayout({
           </main>
           <ChatWidget />
           <Footer />
+          <CookieConsent />
         </AuthProvider>
       </body>
     </html>

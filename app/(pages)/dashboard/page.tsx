@@ -875,6 +875,24 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
 
+              <Card className="border-slate-200 bg-gradient-to-br from-white via-slate-50 to-zinc-100 shadow-md transition-all duration-200 hover:-translate-y-1 hover:shadow-xl">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-slate-600" />
+                    Audit Logs
+                  </CardTitle>
+                  <CardDescription>Inspect every state-changing admin and account action with filters by actor, target, and date</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button
+                    onClick={() => window.open('/admin/audit-logs', '_blank', 'noopener,noreferrer')}
+                    className="w-full bg-gradient-to-r from-slate-600 to-zinc-700 hover:from-slate-700 hover:to-zinc-800"
+                  >
+                    Open Audit Logs
+                  </Button>
+                </CardContent>
+              </Card>
+
               <Card className="border-indigo-100 bg-gradient-to-br from-white via-indigo-50 to-blue-100 shadow-md transition-all duration-200 hover:-translate-y-1 hover:shadow-xl xl:col-span-2">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">

@@ -75,18 +75,18 @@ export default function ServicesHubPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchServiceCategories();
+    const ac = new AbortController();
+    fetchServiceCategories(ac.signal);
+    return () => ac.abort();
   }, []);
 
-  const fetchServiceCategories = async () => {
+  const fetchServiceCategories = async (signal?: AbortSignal) => {
     setIsLoading(true);
     setError(null);
     try {
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/service-categories/active?country=BE`,
-        {
-          credentials: 'include',
-        }
+        { signal, cache: 'no-store' }
       );
 
       if (!response.ok) {
@@ -96,11 +96,12 @@ export default function ServicesHubPage() {
       const data: ServiceCategory[] = await response.json();
       setCategories(data);
     } catch (error) {
+      if (signal?.aborted || (error instanceof Error && error.name === 'AbortError')) return;
       console.error('Error fetching service categories:', error);
       setError('Unable to load services. Please try again later.');
       toast.error('Failed to load services');
     } finally {
-      setIsLoading(false);
+      if (!signal?.aborted) setIsLoading(false);
     }
   };
 
@@ -165,7 +166,7 @@ export default function ServicesHubPage() {
             <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Unable to Load Services</h2>
             <p className="text-gray-600 mb-6">{error}</p>
-            <Button onClick={fetchServiceCategories}>
+            <Button onClick={() => fetchServiceCategories()}>
               Try Again
             </Button>
           </div>

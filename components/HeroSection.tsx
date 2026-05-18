@@ -60,40 +60,36 @@ const HeroSection = () => {
     }
   }, [user]);
 
-  // Fetch popular services from backend on mount
   useEffect(() => {
-    fetchPopularServices();
-  }, []);
+    const ac = new AbortController();
+    const fetchPopularServices = async () => {
+      try {
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+        const response = await fetch(
+          `${backendUrl}/api/search/popular?limit=5`,
+          { signal: ac.signal }
+        );
 
-  const fetchPopularServices = async () => {
-    try {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
-      const response = await fetch(
-        `${backendUrl}/api/search/popular?limit=5`,
-        { credentials: 'include' }
-      );
-
-      if (response.ok) {
-        const data = (await response.json()) as { services?: Array<{ name: string }> };
-        // Extract service names from published projects
-        if (data.services && data.services.length > 0) {
-          const serviceNames = data.services.map((s) => s.name);
-          setPopularServices(serviceNames);
+        if (response.ok) {
+          const data = (await response.json()) as { services?: Array<{ name: string }> };
+          if (data.services && data.services.length > 0) {
+            setPopularServices(data.services.map((s) => s.name));
+          } else {
+            setPopularServices([]);
+          }
         } else {
-          // No published projects yet, show message or fallback
+          console.error('Failed to fetch popular services');
           setPopularServices([]);
         }
-      } else {
-        // Fallback to empty if API fails
-        console.error('Failed to fetch popular services');
+      } catch (error) {
+        if (ac.signal.aborted || (error instanceof Error && error.name === 'AbortError')) return;
+        console.error('Failed to fetch popular services:', error);
         setPopularServices([]);
       }
-    } catch (error) {
-      console.error('Failed to fetch popular services:', error);
-      // Fallback to empty on error
-      setPopularServices([]);
-    }
-  };
+    };
+    fetchPopularServices();
+    return () => ac.abort();
+  }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

@@ -62,7 +62,6 @@ const PopularProjectsCarousel = ({ serviceName, heading, limit = DEFAULT_LIMIT }
           params.delete('service');
         }
         const response = await fetch(`${backendUrl}/api/search/popular-projects?${params.toString()}`, {
-          credentials: 'include',
           signal: controller.signal,
         });
 

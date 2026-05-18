@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { User, Mail, Phone, Shield, Calendar, Building, Check, X, AlertCircle, Loader2, Upload, FileText, CalendarX, Pencil, MapPin, AlertTriangle, CreditCard, Camera, Trash2 } from "lucide-react"
 import EmployeeManagement from "@/components/TeamManagement"
 import PasswordChange from "@/components/PasswordChange"
+import PrivacyAndData from "@/components/PrivacyAndData"
 import EmployeeAvailability from "@/components/EmployeeAvailability"
 import WeeklyAvailabilityCalendar, { CalendarEvent } from "@/components/calendar/WeeklyAvailabilityCalendar"
 import { useRouter } from "next/navigation"
@@ -2623,6 +2624,7 @@ export default function ProfilePage() {
             {/* Security Tab */}
             < TabsContent value="security" className="space-y-6" >
               <PasswordChange />
+              <PrivacyAndData />
             </TabsContent >
           </Tabs >
         ) : (
@@ -2983,6 +2985,7 @@ export default function ProfilePage() {
 
             <TabsContent value="security" className="space-y-6">
               <PasswordChange />
+              <PrivacyAndData />
             </TabsContent>
 
             {
