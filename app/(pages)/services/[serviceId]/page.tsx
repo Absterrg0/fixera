@@ -19,6 +19,7 @@ import BlogCard from '@/components/cms/BlogCard';
 import PopularProjectsCarousel from '@/components/PopularProjectsCarousel';
 import ServiceLandingSearch from '@/components/services/ServiceLandingSearch';
 import ServiceTableOfContents from '@/components/services/ServiceTableOfContents';
+import ServiceViewTracker from '@/components/services/ServiceViewTracker';
 import { extractTocAndAddIds } from '@/lib/cms/toc';
 import { getServiceCoverImage } from '@/lib/serviceCovers';
 
@@ -167,6 +168,7 @@ export default async function Page({ params }: Props) {
 
     return (
       <div className="bg-white">
+        <ServiceViewTracker serviceId={serviceId} />
         <JsonLd
           data={breadcrumbSchema([
             { name: 'Home', path: '/' },
@@ -291,6 +293,7 @@ export default async function Page({ params }: Props) {
 
   return (
     <div className="bg-white">
+      <ServiceViewTracker serviceId={serviceId} />
       <JsonLd
         data={[
           serviceSchema({
