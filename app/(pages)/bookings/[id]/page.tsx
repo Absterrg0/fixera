@@ -16,10 +16,12 @@ import { ArrowLeft, Calendar, Clock, Package, Briefcase, User, Mail, Phone, Shie
 import { toast } from "sonner"
 import { type WarrantyClaimStatus, REASON_LABELS as warrantyReasonLabels, STATUS_LABELS as warrantyStatusLabels } from "@/lib/warrantyClaim"
 import { getAuthToken } from "@/lib/utils"
+import { RESCHEDULE_REASONS } from "@/lib/constants/rescheduleReasons"
 import { Skeleton } from "@/components/ui/skeleton"
 import StartChatButton from "@/components/chat/StartChatButton"
 import ReviewModal from "@/components/booking/ReviewModal"
 import QuotationWizard from "@/components/quotation/QuotationWizard"
+import AvailabilityDatePicker from "@/components/booking/AvailabilityDatePicker"
 import { StripeProvider } from "@/components/stripe/StripeProvider"
 import { PaymentForm } from "@/components/stripe/PaymentForm"
 import type { QuoteVersion, BookingMilestone } from "@/types/quotation"
@@ -165,6 +167,8 @@ interface BookingDetail {
   milestonePayments?: BookingMilestone[]
   selectedSubprojectIndex?: number
   scheduledStartDate?: string
+  scheduledStartTime?: string
+  scheduledEndTime?: string
   scheduledExecutionEndDate?: string
   scheduledEndDate?: string
   createdAt?: string
@@ -182,6 +186,7 @@ interface BookingDetail {
     category?: string
     service?: string
     description?: string
+    timeMode?: 'hours' | 'days' | 'mixed'
     rfqQuestions?: PostBookingQuestion[]
     postBookingQuestions?: PostBookingQuestion[]
     extraOptions?: Array<{ name?: string; price?: number }>
@@ -234,6 +239,46 @@ interface BookingDetail {
     comment?: string
     reviewedAt?: string
   }
+  rescheduleRequest?: {
+    status?: 'pending' | 'accepted' | 'declined'
+    requestedBy?: string
+    requestedAt?: string
+    reason?: string
+    description?: string
+    note?: string
+    proposedSchedule?: {
+      scheduledStartDate?: string
+      scheduledStartTime?: string
+      scheduledExecutionEndDate?: string
+      scheduledBufferEndDate?: string
+    }
+    previousSchedule?: {
+      scheduledStartDate?: string
+      scheduledStartTime?: string
+    }
+  }
+  cancellation?: {
+    cancelledBy?: string
+    reason?: string
+    cancelledAt?: string
+    refundAmount?: number
+  }
+  dispute?: {
+    raisedBy?: string
+    reason?: string
+    description?: string
+    raisedAt?: string
+    type?: 'extra_costs' | 'reschedule' | 'completion_request' | 'warranty_claim' | 'warranty_resolve' | 'refund_request' | 'in_progress'
+    attachments?: string[]
+    resolutionAttachments?: string[]
+  }
+  statusHistory?: Array<{
+    status?: BookingStatus
+    timestamp?: string
+    updatedBy?: string
+    note?: string
+  }>
+  actualEndDate?: string
 }
 
 interface WarrantyClaimDetail {
@@ -505,6 +550,23 @@ export default function BookingDetailPage() {
   const [disputeReason, setDisputeReason] = useState("")
   const [disputeDescription, setDisputeDescription] = useState("")
   const [submittingDispute, setSubmittingDispute] = useState(false)
+  const [disputeStep, setDisputeStep] = useState<'warning' | 'form'>('warning')
+  const [disputeType, setDisputeType] = useState<'extra_costs' | 'reschedule' | 'in_progress' | 'completion_request' | 'warranty_claim' | 'warranty_resolve' | 'refund_request'>('extra_costs')
+  const [disputeAttachments, setDisputeAttachments] = useState<File[]>([])
+
+  // Customer cancel + reschedule state
+  const [showCancelModal, setShowCancelModal] = useState(false)
+  const [cancelReason, setCancelReason] = useState("")
+  const [submittingCancel, setSubmittingCancel] = useState(false)
+  const [showRescheduleModal, setShowRescheduleModal] = useState(false)
+  const [rescheduleDate, setRescheduleDate] = useState("")
+  const [rescheduleTime, setRescheduleTime] = useState("")
+  const [rescheduleReason, setRescheduleReason] = useState("")
+  const [rescheduleDescription, setRescheduleDescription] = useState("")
+  const [submittingReschedule, setSubmittingReschedule] = useState(false)
+  const [respondingReschedule, setRespondingReschedule] = useState(false)
+  const [showRescheduleRefundModal, setShowRescheduleRefundModal] = useState(false)
+  const [rescheduleRefundNote, setRescheduleRefundNote] = useState("")
   const [confirmingCompletion, setConfirmingCompletion] = useState(false)
   const [extraCostClientSecret, setExtraCostClientSecret] = useState("")
   const [loadingExtraCostPayment, setLoadingExtraCostPayment] = useState(false)
@@ -671,6 +733,11 @@ export default function BookingDetailPage() {
       !disputeAutoOpenedRef.current
     ) {
       disputeAutoOpenedRef.current = true
+      setDisputeType('extra_costs')
+      setDisputeReason("")
+      setDisputeDescription("")
+      setDisputeAttachments([])
+      setDisputeStep('warning')
       setShowDisputeModal(true)
     }
   }, [booking, searchParams, user?.role])
@@ -1705,10 +1772,31 @@ export default function BookingDetailPage() {
   }
 
   const handleCustomerDispute = async () => {
-    if (!bookingId || !disputeReason) return
+    const trimmedReason = disputeReason.trim()
+    if (!bookingId || !trimmedReason) return
     setSubmittingDispute(true)
     try {
       const token = getAuthToken()
+
+      let uploadedUrls: string[] = []
+      if (disputeAttachments.length > 0) {
+        const formData = new FormData()
+        disputeAttachments.forEach((file) => formData.append("files", file))
+        const uploadHeaders: Record<string, string> = {}
+        if (token) uploadHeaders.Authorization = `Bearer ${token}`
+        const uploadResponse = await fetch(
+          `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/bookings/${bookingId}/dispute-upload`,
+          { method: "POST", headers: uploadHeaders, credentials: "include", body: formData }
+        )
+        const uploadPayload = await uploadResponse.json()
+        if (!uploadResponse.ok || !uploadPayload.success) {
+          toast.error(uploadPayload?.error?.message || "Failed to upload attachments")
+          setSubmittingDispute(false)
+          return
+        }
+        uploadedUrls = Array.isArray(uploadPayload.data?.urls) ? uploadPayload.data.urls : []
+      }
+
       const headers: Record<string, string> = { "Content-Type": "application/json" }
       if (token) headers['Authorization'] = `Bearer ${token}`
 
@@ -1716,7 +1804,12 @@ export default function BookingDetailPage() {
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/bookings/${bookingId}/dispute-extra-costs`,
         {
           method: "POST", headers, credentials: "include",
-          body: JSON.stringify({ reason: disputeReason, description: disputeDescription })
+          body: JSON.stringify({
+            reason: trimmedReason,
+            description: disputeDescription.trim(),
+            type: disputeType,
+            attachments: uploadedUrls,
+          })
         }
       )
       const result = await response.json()
@@ -1725,6 +1818,8 @@ export default function BookingDetailPage() {
         setShowDisputeModal(false)
         setDisputeReason("")
         setDisputeDescription("")
+        setDisputeAttachments([])
+        setDisputeStep('warning')
         await refreshBooking()
       } else {
         toast.error(result.error?.message || "Failed to raise dispute")
@@ -1735,6 +1830,137 @@ export default function BookingDetailPage() {
     } finally {
       setSubmittingDispute(false)
     }
+  }
+
+  const handleCustomerCancel = async () => {
+    if (!bookingId || !cancelReason.trim()) {
+      toast.error("Cancellation reason is required")
+      return
+    }
+    setSubmittingCancel(true)
+    try {
+      const token = getAuthToken()
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (token) headers.Authorization = `Bearer ${token}`
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/bookings/${bookingId}/cancel`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers,
+          body: JSON.stringify({ reason: cancelReason.trim() }),
+        }
+      )
+      const result = await response.json()
+      if (response.ok && result.success) {
+        toast.success(result.msg || "Cancellation request submitted")
+        setShowCancelModal(false)
+        setCancelReason("")
+        await refreshBooking()
+      } else {
+        toast.error(result.msg || result.error?.message || "Failed to cancel booking")
+      }
+    } catch (err) {
+      console.error("Failed to cancel booking:", err)
+      toast.error("Failed to cancel booking. Please try again.")
+    } finally {
+      setSubmittingCancel(false)
+    }
+  }
+
+  const handleCustomerReschedule = async () => {
+    if (!bookingId || !rescheduleDate || !rescheduleReason) {
+      toast.error("New date and reason are required")
+      return
+    }
+    const isDaysMode = booking?.project?.timeMode === 'days'
+    if (!isDaysMode && !rescheduleTime) {
+      toast.error("Start time is required")
+      return
+    }
+    setSubmittingReschedule(true)
+    try {
+      const token = getAuthToken()
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (token) headers.Authorization = `Bearer ${token}`
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/bookings/${bookingId}/reschedule-request`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers,
+          body: JSON.stringify({
+            scheduledStartDate: rescheduleDate,
+            ...(isDaysMode ? {} : { scheduledStartTime: rescheduleTime }),
+            reason: rescheduleReason,
+            description: rescheduleDescription.trim() || undefined,
+          }),
+        }
+      )
+      const result = await response.json()
+      if (response.ok && result.success) {
+        toast.success("Rescheduling request sent.")
+        setShowRescheduleModal(false)
+        setRescheduleDate("")
+        setRescheduleTime("")
+        setRescheduleReason("")
+        setRescheduleDescription("")
+        await refreshBooking()
+      } else {
+        toast.error(result.error?.message || "Failed to request rescheduling")
+      }
+    } catch (err) {
+      console.error("Failed to request rescheduling:", err)
+      toast.error("Failed to request rescheduling. Please try again.")
+    } finally {
+      setSubmittingReschedule(false)
+    }
+  }
+
+  const handleRespondReschedule = async (action: 'accept' | 'refund', extra?: { reason?: string; note?: string }) => {
+    if (!bookingId) return
+    setRespondingReschedule(true)
+    try {
+      const token = getAuthToken()
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (token) headers.Authorization = `Bearer ${token}`
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/bookings/${bookingId}/respond-reschedule`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers,
+          body: JSON.stringify({ action, ...(extra || {}) }),
+        }
+      )
+      const result = await response.json()
+      if (response.ok && result.success) {
+        toast.success(
+          action === 'accept'
+            ? 'Reschedule accepted.'
+            : 'Reschedule declined and refund issued.'
+        )
+        setShowRescheduleRefundModal(false)
+        setRescheduleRefundNote("")
+        await refreshBooking()
+      } else {
+        toast.error(result.error?.message || "Failed to respond to reschedule")
+      }
+    } catch (err) {
+      console.error("Failed to respond to reschedule:", err)
+      toast.error("Failed to respond. Please try again.")
+    } finally {
+      setRespondingReschedule(false)
+    }
+  }
+
+  const openDisputeModal = (type: 'extra_costs' | 'reschedule' | 'in_progress' | 'completion_request' = 'extra_costs') => {
+    setDisputeType(type)
+    setDisputeReason("")
+    setDisputeDescription("")
+    setDisputeAttachments([])
+    setDisputeStep('warning')
+    setShowDisputeModal(true)
   }
 
   const addExtraCost = (type: 'unit_adjustment' | 'condition' | 'option' | 'other') => {
@@ -2173,15 +2399,113 @@ export default function BookingDetailPage() {
                         : "Professional booking"}
                     </CardDescription>
                   </div>
-                  <Badge
-                    variant="outline"
-                    className={`text-xs font-medium capitalize rounded-full px-2.5 py-1 ${
-                      DETAIL_STATUS_STYLES[booking.status] ||
-                      "bg-slate-50 text-slate-700 border border-slate-100"
-                    }`}
-                  >
-                    {booking.status.replace(/_/g, " ")}
-                  </Badge>
+                  <div className="flex flex-col items-end gap-2">
+                    <Badge
+                      variant="outline"
+                      className={`text-xs font-medium capitalize rounded-full px-2.5 py-1 ${
+                        DETAIL_STATUS_STYLES[booking.status] ||
+                        "bg-slate-50 text-slate-700 border border-slate-100"
+                      }`}
+                    >
+                      {booking.status.replace(/_/g, " ")}
+                    </Badge>
+                    {user?.role === "customer" && (booking.status === "booked" || booking.status === "in_progress") && (
+                      <div className="flex flex-wrap gap-2 justify-end">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setRescheduleDate(booking.scheduledStartDate?.slice(0, 10) || "")
+                            setRescheduleTime(booking.scheduledStartTime || "")
+                            setRescheduleReason("")
+                            setRescheduleDescription("")
+                            setShowRescheduleModal(true)
+                          }}
+                        >
+                          Reschedule
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-rose-300 text-rose-700 hover:bg-rose-50"
+                          onClick={() => {
+                            setCancelReason("")
+                            setShowCancelModal(true)
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                        {booking.status === "in_progress" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                            onClick={() => openDisputeModal('in_progress')}
+                          >
+                            <AlertTriangle className="h-4 w-4 mr-1" />
+                            Dispute
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                    {user?.role === "customer"
+                      && booking.rescheduleRequest?.status === "pending"
+                      && booking.rescheduleRequest?.requestedBy !== user?._id && (
+                      <div className="flex flex-wrap gap-2 justify-end">
+                        <Button
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                          onClick={() => handleRespondReschedule('accept')}
+                          disabled={respondingReschedule}
+                        >
+                          {respondingReschedule ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5 mr-1" />}
+                          Accept
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-rose-300 text-rose-700 hover:bg-rose-50"
+                          onClick={() => {
+                            setRescheduleRefundNote("")
+                            setShowRescheduleRefundModal(true)
+                          }}
+                          disabled={respondingReschedule}
+                        >
+                          Refund
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                          onClick={() => openDisputeModal('reschedule')}
+                          disabled={respondingReschedule}
+                        >
+                          <AlertTriangle className="h-3.5 w-3.5 mr-1" />
+                          Dispute
+                        </Button>
+                      </div>
+                    )}
+                    {user?.role === "customer" && booking.status === "completed" && booking.actualEndDate && (() => {
+                      const endTime = new Date(booking.actualEndDate).getTime()
+                      const sevenDays = 7 * 24 * 60 * 60 * 1000
+                      const withinWindow = Date.now() - endTime <= sevenDays
+                      if (!withinWindow) return null
+                      if (booking.dispute?.raisedAt) return null
+                      return (
+                        <div className="flex flex-wrap gap-2 justify-end">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                            onClick={() => openDisputeModal('completion_request')}
+                          >
+                            <AlertTriangle className="h-3.5 w-3.5 mr-1" />
+                            Dispute
+                          </Button>
+                        </div>
+                      )
+                    })()}
+                  </div>
                 </div>
               </CardHeader>
 
@@ -3213,7 +3537,7 @@ export default function BookingDetailPage() {
                         )}
                       </Button>
                       <Button
-                        onClick={() => setShowDisputeModal(true)}
+                        onClick={() => openDisputeModal('extra_costs')}
                         variant="outline"
                         className="border-red-300 text-red-700 hover:bg-red-50"
                         size="sm"
@@ -3778,6 +4102,33 @@ export default function BookingDetailPage() {
                   </section>
                 )}
 
+                {(booking.status === "cancelled" || booking.status === "refunded") && (() => {
+                  const cancelledAtRaw = booking.cancellation?.cancelledAt
+                    || booking.statusHistory?.find((s) => s.status === 'cancelled')?.timestamp
+                  const refundAmount = booking.cancellation?.refundAmount
+                  const refundCurrency = booking.payment?.currency || 'EUR'
+                  const reason = booking.payment?.refundReason || booking.cancellation?.reason
+                  return (
+                    <section className="space-y-2">
+                      <h2 className="text-sm font-semibold text-gray-900">Cancellation details</h2>
+                      <div className="rounded-lg border border-rose-100 bg-rose-50/60 p-3 space-y-1 text-xs text-gray-700">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Cancellation date</span>
+                          <span className="font-medium">{cancelledAtRaw ? new Date(cancelledAtRaw).toLocaleString() : '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Refund amount</span>
+                          <span className="font-medium">{refundAmount != null ? `${refundCurrency} ${refundAmount.toFixed(2)}` : '—'}</span>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <span className="text-gray-500 shrink-0">Reason</span>
+                          <span className="font-medium text-right break-words">{reason || '—'}</span>
+                        </div>
+                      </div>
+                    </section>
+                  )
+                })()}
+
                 {Array.isArray(booking.rfqData?.attachments) && booking.rfqData.attachments.length > 0 && (
                   <section className="space-y-2">
                     <h2 className="text-sm font-semibold text-gray-900">
@@ -4337,43 +4688,236 @@ export default function BookingDetailPage() {
         </Dialog>
 
         {/* Customer Dispute Modal */}
-        <Dialog open={showDisputeModal} onOpenChange={setShowDisputeModal}>
+        <Dialog
+          open={showDisputeModal}
+          onOpenChange={(open) => {
+            setShowDisputeModal(open)
+            if (!open) {
+              setDisputeStep('warning')
+              setDisputeAttachments([])
+              setDisputeReason("")
+              setDisputeDescription("")
+            }
+          }}
+        >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Dispute Extra Costs</DialogTitle>
+              <DialogTitle>Dispute</DialogTitle>
               <DialogDescription>
-                If you disagree with the extra costs or the work quality, raise a dispute. An admin will review your case.
+                Raise a dispute for admin review.
+              </DialogDescription>
+            </DialogHeader>
+            {disputeStep === 'warning' ? (
+              <div className="space-y-4">
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+                  <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-900">Have you tried chatting with the professional first?</p>
+                    <p className="text-xs text-amber-800 mt-1">
+                      Disputes should only be raised after attempting to resolve the issue through the chat. Fixera support will review the chat history. Do you want to continue with the dispute?
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button variant="outline" onClick={() => setShowDisputeModal(false)}>Cancel</Button>
+                  <Button
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                    onClick={() => setDisputeStep('form')}
+                  >
+                    Continue to dispute
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="dispute-reason">Reason</Label>
+                  <Input
+                    id="dispute-reason"
+                    value={disputeReason}
+                    onChange={(e) => setDisputeReason(e.target.value)}
+                    placeholder="Brief reason for the dispute"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="dispute-description">Description (optional)</Label>
+                  <Textarea
+                    id="dispute-description"
+                    value={disputeDescription}
+                    onChange={(e) => setDisputeDescription(e.target.value)}
+                    placeholder="Provide more details about your dispute..."
+                    className="min-h-[100px]"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="dispute-files">Attachments (optional)</Label>
+                  <Input
+                    id="dispute-files"
+                    type="file"
+                    multiple
+                    accept="image/*,video/*,.pdf"
+                    onChange={(e) => {
+                      const fileList = e.target.files
+                      if (!fileList) return
+                      const arr = Array.from(fileList).slice(0, 10)
+                      setDisputeAttachments(arr)
+                    }}
+                  />
+                  {disputeAttachments.length > 0 && (
+                    <p className="text-[11px] text-gray-500">{disputeAttachments.length} file(s) selected</p>
+                  )}
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button variant="outline" onClick={() => setDisputeStep('warning')}>Back</Button>
+                  <Button
+                    onClick={handleCustomerDispute}
+                    disabled={submittingDispute || !disputeReason.trim()}
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    {submittingDispute ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <AlertTriangle className="h-4 w-4 mr-2" />}
+                    Submit Dispute
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Customer Cancel Modal */}
+        <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Cancel Booking</DialogTitle>
+              <DialogDescription>Provide a reason for cancellation. An admin will review your request.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="cancel-reason">Reason</Label>
+                <Textarea
+                  id="cancel-reason"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  className="min-h-[100px]"
+                  placeholder="Explain why you want to cancel..."
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setShowCancelModal(false)} disabled={submittingCancel}>Back</Button>
+                <Button
+                  className="bg-rose-600 hover:bg-rose-700 text-white"
+                  onClick={handleCustomerCancel}
+                  disabled={submittingCancel || !cancelReason.trim()}
+                >
+                  {submittingCancel ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                  Submit Cancellation
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Customer Reschedule Modal */}
+        <Dialog open={showRescheduleModal} onOpenChange={setShowRescheduleModal}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Request Rescheduling</DialogTitle>
+              <DialogDescription>Pick a new start date. Your professional will be notified.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className={`grid gap-3 ${booking?.project?.timeMode === 'days' ? '' : 'sm:grid-cols-2'}`}>
+                <div className="space-y-2">
+                  <Label htmlFor="customer-reschedule-date">New start date</Label>
+                  <AvailabilityDatePicker
+                    id="customer-reschedule-date"
+                    projectId={booking?.project?._id}
+                    value={rescheduleDate}
+                    onChange={setRescheduleDate}
+                    ariaLabel="New start date"
+                  />
+                </div>
+                {booking?.project?.timeMode !== 'days' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="customer-reschedule-time">Start time</Label>
+                    <Input
+                      id="customer-reschedule-time"
+                      type="time"
+                      value={rescheduleTime}
+                      onChange={(e) => setRescheduleTime(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="customer-reschedule-reason">Reason</Label>
+                <Select value={rescheduleReason} onValueChange={setRescheduleReason}>
+                  <SelectTrigger id="customer-reschedule-reason">
+                    <SelectValue placeholder="Select a reason" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RESCHEDULE_REASONS.map((option) => (
+                      <SelectItem key={option} value={option}>{option}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="customer-reschedule-description">Description (optional)</Label>
+                <Textarea
+                  id="customer-reschedule-description"
+                  value={rescheduleDescription}
+                  onChange={(e) => setRescheduleDescription(e.target.value)}
+                  className="min-h-[80px]"
+                  placeholder="Add any additional details..."
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setShowRescheduleModal(false)} disabled={submittingReschedule}>Back</Button>
+                <Button
+                  onClick={handleCustomerReschedule}
+                  disabled={
+                    submittingReschedule ||
+                    !rescheduleDate ||
+                    !rescheduleReason ||
+                    (booking?.project?.timeMode !== 'days' && !rescheduleTime)
+                  }
+                >
+                  {submittingReschedule ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                  Send Request
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Reschedule Refund (decline) Modal */}
+        <Dialog open={showRescheduleRefundModal} onOpenChange={setShowRescheduleRefundModal}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Decline & Refund</DialogTitle>
+              <DialogDescription>
+                Declining cancels this booking and triggers a full refund.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="dispute-reason">Reason</Label>
-                <Input
-                  id="dispute-reason"
-                  value={disputeReason}
-                  onChange={(e) => setDisputeReason(e.target.value)}
-                  placeholder="Brief reason for the dispute"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="dispute-description">Description (optional)</Label>
+                <Label htmlFor="reschedule-refund-note">Note (optional)</Label>
                 <Textarea
-                  id="dispute-description"
-                  value={disputeDescription}
-                  onChange={(e) => setDisputeDescription(e.target.value)}
-                  placeholder="Provide more details about your dispute..."
-                  className="min-h-[100px]"
+                  id="reschedule-refund-note"
+                  value={rescheduleRefundNote}
+                  onChange={(e) => setRescheduleRefundNote(e.target.value)}
+                  className="min-h-[80px]"
+                  placeholder="Tell us why..."
                 />
               </div>
               <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => setShowDisputeModal(false)}>Cancel</Button>
+                <Button variant="outline" onClick={() => setShowRescheduleRefundModal(false)} disabled={respondingReschedule}>Back</Button>
                 <Button
-                  onClick={handleCustomerDispute}
-                  disabled={submittingDispute || !disputeReason.trim()}
-                  className="bg-red-600 hover:bg-red-700 text-white"
+                  className="bg-rose-600 hover:bg-rose-700 text-white"
+                  onClick={() => handleRespondReschedule('refund', { note: rescheduleRefundNote.trim() || undefined })}
+                  disabled={respondingReschedule}
                 >
-                  {submittingDispute ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <AlertTriangle className="h-4 w-4 mr-2" />}
-                  Submit Dispute
+                  {respondingReschedule ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                  Decline & Refund
                 </Button>
               </div>
             </div>

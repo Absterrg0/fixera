@@ -10,6 +10,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import AvailabilityDatePicker from "@/components/booking/AvailabilityDatePicker"
+import { RESCHEDULE_REASONS } from "@/lib/constants/rescheduleReasons"
 import { getAuthToken } from "@/lib/utils"
 import { getBookingStatusMeta, getBookingTitle, type BookingStatus } from "@/lib/dashboardBookingHelpers"
 import { Calendar, CheckCheck, CreditCard, Loader2, Play, RefreshCw, XCircle } from "lucide-react"
@@ -71,6 +74,7 @@ export interface TimelineBooking {
     title?: string
     category?: string
     service?: string
+    timeMode?: 'hours' | 'days' | 'mixed'
   }
   milestonePayments?: Array<{
     title?: string
@@ -278,6 +282,7 @@ export default function BookingTimelineBoard({
   const [rescheduleDate, setRescheduleDate] = useState("")
   const [rescheduleTime, setRescheduleTime] = useState("")
   const [rescheduleReason, setRescheduleReason] = useState("")
+  const [rescheduleDescription, setRescheduleDescription] = useState("")
   const [extendDate, setExtendDate] = useState("")
   const [extendReason, setExtendReason] = useState("")
 
@@ -330,7 +335,8 @@ export default function BookingTimelineBoard({
     setCancelReason("")
     setRescheduleDate(booking.rescheduleRequest?.proposedSchedule?.scheduledStartDate?.slice(0, 10) || booking.scheduledStartDate?.slice(0, 10) || "")
     setRescheduleTime(booking.rescheduleRequest?.proposedSchedule?.scheduledStartTime || booking.scheduledStartTime || "")
-    setRescheduleReason(booking.rescheduleRequest?.reason || "")
+    setRescheduleReason("")
+    setRescheduleDescription("")
     setExtendDate(booking.scheduledExecutionEndDate?.slice(0, 10) || "")
     setExtendReason("")
   }
@@ -391,8 +397,14 @@ export default function BookingTimelineBoard({
   }
 
   const submitReschedule = async () => {
-    if (!activeBooking || !rescheduleDate || !rescheduleReason.trim()) {
+    if (!activeBooking || !rescheduleDate || !rescheduleReason) {
       toast.error("New date and rescheduling reason are required")
+      return
+    }
+
+    const isDaysMode = activeBooking.project?.timeMode === 'days'
+    if (!isDaysMode && !rescheduleTime) {
+      toast.error("Start time is required")
       return
     }
 
@@ -406,8 +418,9 @@ export default function BookingTimelineBoard({
           headers: withAuthHeaders(),
           body: JSON.stringify({
             scheduledStartDate: rescheduleDate,
-            scheduledStartTime: rescheduleTime || undefined,
-            reason: rescheduleReason.trim(),
+            ...(isDaysMode ? {} : { scheduledStartTime: rescheduleTime }),
+            reason: rescheduleReason,
+            description: rescheduleDescription.trim() || undefined,
           }),
         }),
       "Rescheduling request sent."
@@ -826,28 +839,57 @@ export default function BookingTimelineBoard({
             <DialogDescription>Propose a new start date for the customer to approve.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className={`grid gap-3 ${activeBooking?.project?.timeMode === 'days' ? '' : 'sm:grid-cols-2'}`}>
               <div className="space-y-2">
                 <Label htmlFor="timeline-reschedule-date">New start date</Label>
-                <Input id="timeline-reschedule-date" type="date" value={rescheduleDate} onChange={(event) => setRescheduleDate(event.target.value)} />
+                <AvailabilityDatePicker
+                  id="timeline-reschedule-date"
+                  projectId={activeBooking?.project?._id}
+                  value={rescheduleDate}
+                  onChange={setRescheduleDate}
+                />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="timeline-reschedule-time">Start time</Label>
-                <Input id="timeline-reschedule-time" type="time" value={rescheduleTime} onChange={(event) => setRescheduleTime(event.target.value)} />
-              </div>
+              {activeBooking?.project?.timeMode !== 'days' && (
+                <div className="space-y-2">
+                  <Label htmlFor="timeline-reschedule-time">Start time</Label>
+                  <Input id="timeline-reschedule-time" type="time" value={rescheduleTime} onChange={(event) => setRescheduleTime(event.target.value)} />
+                </div>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="timeline-reschedule-reason">Reason</Label>
+              <Select value={rescheduleReason} onValueChange={setRescheduleReason}>
+                <SelectTrigger id="timeline-reschedule-reason">
+                  <SelectValue placeholder="Select a reason" />
+                </SelectTrigger>
+                <SelectContent>
+                  {RESCHEDULE_REASONS.map((option) => (
+                    <SelectItem key={option} value={option}>{option}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="timeline-reschedule-description">Description (optional)</Label>
               <Textarea
-                id="timeline-reschedule-reason"
-                value={rescheduleReason}
-                onChange={(event) => setRescheduleReason(event.target.value)}
-                className="min-h-[100px]"
+                id="timeline-reschedule-description"
+                value={rescheduleDescription}
+                onChange={(event) => setRescheduleDescription(event.target.value)}
+                className="min-h-[80px]"
+                placeholder="Add any additional details..."
               />
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={closeDialog} disabled={isSubmitting}>Back</Button>
-              <Button onClick={submitReschedule} disabled={isSubmitting}>
+              <Button
+                onClick={submitReschedule}
+                disabled={
+                  isSubmitting ||
+                  !rescheduleDate ||
+                  !rescheduleReason ||
+                  (activeBooking?.project?.timeMode !== 'days' && !rescheduleTime)
+                }
+              >
                 {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Send Request
               </Button>
