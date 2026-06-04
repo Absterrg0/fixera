@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Mail, Download, RefreshCw, TrendingUp, Users, Calendar, AlertTriangle, Shield, RotateCcw, Clock, Eye, Star, Heart, Activity, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts'
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || ''
@@ -111,46 +111,40 @@ const ScalarCard = ({ icon: Icon, label, value, suffix, loading }: { icon: Lucid
   </Card>
 )
 
-interface SortableTableProps {
-  columns: Array<{ key: string; label: string; numeric?: boolean; format?: (v: unknown) => string }>
-  rows: Row[]
-  loading: boolean
-  emptyLabel?: string
-  defaultSortKey: string
-  defaultSortDir?: SortDir
+interface KpiColumn { key: string; label: string; numeric?: boolean; format?: (v: unknown) => string }
+
+const sortRows = (rows: Row[], sortKey: string, sortDir: SortDir): Row[] => {
+  const copy = [...rows]
+  copy.sort((a, b) => {
+    const av = a[sortKey]
+    const bv = b[sortKey]
+    const aNull = av == null || av === ''
+    const bNull = bv == null || bv === ''
+    if (aNull && bNull) return 0
+    if (aNull) return 1
+    if (bNull) return -1
+    const aNum = typeof av === 'number' ? av : Number(av)
+    const bNum = typeof bv === 'number' ? bv : Number(bv)
+    if (!isNaN(aNum) && !isNaN(bNum)) return sortDir === 'asc' ? aNum - bNum : bNum - aNum
+    return sortDir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av))
+  })
+  return copy
 }
 
-const SortableTable = ({ columns, rows, loading, emptyLabel = 'No data in this range', defaultSortKey, defaultSortDir = 'desc' }: SortableTableProps) => {
-  const [sortKey, setSortKey] = useState<string>(defaultSortKey)
-  const [sortDir, setSortDir] = useState<SortDir>(defaultSortDir)
+interface SortableTableProps {
+  columns: KpiColumn[]
+  sortedRows: Row[]
+  loading: boolean
+  emptyLabel?: string
+  sortKey: string
+  sortDir: SortDir
+  onToggleSort: (key: string) => void
+  rowKeyOf: (row: Row) => string
+  selectedRowKey?: string | null
+  onRowSelect?: (key: string) => void
+}
 
-  const sortedRows = useMemo(() => {
-    const copy = [...rows]
-    copy.sort((a, b) => {
-      const av = a[sortKey]
-      const bv = b[sortKey]
-      const aNull = av == null || av === ''
-      const bNull = bv == null || bv === ''
-      if (aNull && bNull) return 0
-      if (aNull) return 1
-      if (bNull) return -1
-      const aNum = typeof av === 'number' ? av : Number(av)
-      const bNum = typeof bv === 'number' ? bv : Number(bv)
-      if (!isNaN(aNum) && !isNaN(bNum)) return sortDir === 'asc' ? aNum - bNum : bNum - aNum
-      return sortDir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av))
-    })
-    return copy
-  }, [rows, sortKey, sortDir])
-
-  const toggleSort = (key: string) => {
-    if (key === sortKey) {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
-    } else {
-      setSortKey(key)
-      setSortDir('desc')
-    }
-  }
-
+const SortableTable = ({ columns, sortedRows, loading, emptyLabel = 'No data in this range', sortKey, sortDir, onToggleSort, rowKeyOf, selectedRowKey, onRowSelect }: SortableTableProps) => {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -160,7 +154,7 @@ const SortableTable = ({ columns, rows, loading, emptyLabel = 'No data in this r
               <th
                 key={c.key}
                 className={`px-3 py-2 select-none cursor-pointer hover:bg-gray-100 ${c.numeric ? 'text-right' : 'text-left'}`}
-                onClick={() => toggleSort(c.key)}
+                onClick={() => onToggleSort(c.key)}
               >
                 {c.label}
                 {sortKey === c.key && (
@@ -175,9 +169,14 @@ const SortableTable = ({ columns, rows, loading, emptyLabel = 'No data in this r
             <tr><td colSpan={columns.length} className="px-3 py-6 text-center text-gray-400">{emptyLabel}</td></tr>
           )}
           {sortedRows.map((row, idx) => {
-            const stableKey = columns.map((c) => String(row[c.key] ?? '')).join('|') || String(idx)
+            const key = rowKeyOf(row) || String(idx)
+            const selected = selectedRowKey != null && key === selectedRowKey
             return (
-            <tr key={stableKey} className="hover:bg-blue-50/40">
+            <tr
+              key={key}
+              onClick={() => onRowSelect?.(key)}
+              className={`cursor-pointer ${selected ? 'bg-blue-100' : 'hover:bg-blue-50/40'}`}
+            >
               {columns.map((c) => {
                 const v = row[c.key]
                 const display = c.format ? c.format(v) : (v == null || v === '' ? '—' : String(v))
@@ -225,6 +224,24 @@ const TAB_SECTION_MAP: Record<TabKey, string> = {
   customer: 'customer',
 }
 
+const TAB_LABEL_KEY: Record<TabKey, string> = {
+  city: 'city',
+  service: 'serviceType',
+  subproject: 'subprojectName',
+  professional: 'name',
+  customer: 'name',
+}
+
+const TAB_ROWKEY_FIELDS: Record<TabKey, string[]> = {
+  city: ['city'],
+  service: ['serviceType'],
+  subproject: ['projectTitle', 'subprojectName'],
+  professional: ['professionalId', 'email', 'name'],
+  customer: ['customerId', 'email', 'name'],
+}
+
+const makeRowKey = (tab: TabKey, row: Row) => TAB_ROWKEY_FIELDS[tab].map((f) => String(row[f] ?? '')).join('|')
+
 export default function AdminKpiDashboard() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
@@ -245,6 +262,16 @@ export default function AdminKpiDashboard() {
   const [professionals, setProfessionals] = useState<Row[]>([])
   const [customers, setCustomers] = useState<Row[]>([])
   const [activeTab, setActiveTab] = useState<TabKey>('city')
+  const [sortByTab, setSortByTab] = useState<Record<TabKey, { key: string; dir: SortDir }>>({
+    city: { key: 'platformRevenue', dir: 'desc' },
+    service: { key: 'platformRevenue', dir: 'desc' },
+    subproject: { key: 'platformRevenue', dir: 'desc' },
+    professional: { key: 'platformRevenue', dir: 'desc' },
+    customer: { key: 'platformRevenue', dir: 'desc' },
+  })
+  const [selectedByTab, setSelectedByTab] = useState<Record<TabKey, string | null>>({
+    city: null, service: null, subproject: null, professional: null, customer: null,
+  })
   const [loading, setLoading] = useState(true)
   const [sendingReport, setSendingReport] = useState(false)
   const [showEmails, setShowEmails] = useState(false)
@@ -406,93 +433,112 @@ export default function AdminKpiDashboard() {
     customer: customers,
   }), [regions, serviceBookings, subprojects, professionals, customers])
 
-  // Per-tab evolution line: synthesized cumulative bookings over the date range for the top row
-  const evolution = useMemo(() => {
-    const startDate = new Date(appliedFrom)
-    const endDate = new Date(appliedTo)
-    const out: Array<{ date: string; bookings: number }> = []
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return out
-    const days = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
-    const step = Math.max(1, Math.round(days / 12))
-    const rows = tabRowsMap[activeTab]
-    const total = rows.reduce((sum, r) => sum + (Number(r.bookingsCount) || 0), 0)
-    for (let i = 0; i <= days; i += step) {
-      const d = new Date(startDate)
-      d.setDate(d.getDate() + i)
-      out.push({ date: toISODateInput(d), bookings: Math.round((total * i) / days) })
+  const activeSorted = useMemo(
+    () => sortRows(tabRowsMap[activeTab], sortByTab[activeTab].key, sortByTab[activeTab].dir),
+    [activeTab, sortByTab, tabRowsMap]
+  )
+
+  const columnsByTab: Record<TabKey, KpiColumn[]> = useMemo(() => {
+    const emailFormat = showEmails ? undefined : maskEmail
+    return {
+      city: [
+        { key: 'city', label: 'City' },
+        { key: 'signUps', label: 'Sign-ups', numeric: true },
+        { key: 'views', label: 'Views', numeric: true },
+        { key: 'totalBookings', label: 'Bookings', numeric: true },
+        { key: 'bookedValue', label: 'Booked €', numeric: true, format: fmtMoney },
+        { key: 'platformRevenue', label: 'Platform €', numeric: true, format: fmtMoney },
+        { key: 'quotationConversionRate', label: 'Convert %', numeric: true, format: fmtPct },
+        { key: 'disputeRate', label: 'Dispute %', numeric: true, format: fmtPct },
+        { key: 'warrantyClaimRate', label: 'Warranty %', numeric: true, format: fmtPct },
+        { key: 'refundRate', label: 'Refund %', numeric: true, format: fmtPct },
+      ],
+      service: [
+        { key: 'serviceType', label: 'Service' },
+        { key: 'totalRfqs', label: 'RFQs', numeric: true },
+        { key: 'quotedCount', label: 'Quotes', numeric: true },
+        { key: 'bookingsCount', label: 'Bookings', numeric: true },
+        { key: 'completedCount', label: 'Completed', numeric: true },
+        { key: 'grossRevenue', label: 'Gross €', numeric: true, format: fmtMoney },
+        { key: 'platformRevenue', label: 'Platform €', numeric: true, format: fmtMoney },
+        { key: 'quotationConversionRate', label: 'Convert %', numeric: true, format: fmtPct },
+        { key: 'disputeRate', label: 'Dispute %', numeric: true, format: fmtPct },
+        { key: 'refundRate', label: 'Refund %', numeric: true, format: fmtPct },
+        { key: 'reschedulingCount', label: 'Reschedules', numeric: true },
+        { key: 'avgTtfqHours', label: 'Avg TTFQ (h)', numeric: true },
+      ],
+      subproject: [
+        { key: 'projectTitle', label: 'Project' },
+        { key: 'subprojectName', label: 'Subproject' },
+        { key: 'totalRfqs', label: 'RFQs', numeric: true },
+        { key: 'bookingsCount', label: 'Bookings', numeric: true },
+        { key: 'completedCount', label: 'Completed', numeric: true },
+        { key: 'disputeCount', label: 'Disputes', numeric: true },
+        { key: 'refundCount', label: 'Refunds', numeric: true },
+        { key: 'reschedulingCount', label: 'Reschedules', numeric: true },
+        { key: 'grossRevenue', label: 'Gross €', numeric: true, format: fmtMoney },
+        { key: 'platformRevenue', label: 'Platform €', numeric: true, format: fmtMoney },
+        { key: 'price', label: 'Price', numeric: true, format: fmtMoney },
+      ],
+      professional: [
+        { key: 'name', label: 'Name' },
+        { key: 'email', label: 'Email', format: emailFormat },
+        { key: 'city', label: 'City' },
+        { key: 'professionalLevel', label: 'Level' },
+        { key: 'createdProjects', label: 'Projects', numeric: true },
+        { key: 'rfqsReceived', label: 'RFQs', numeric: true },
+        { key: 'quotedCount', label: 'Quoted', numeric: true },
+        { key: 'bookingsCount', label: 'Bookings', numeric: true },
+        { key: 'completedCount', label: 'Completed', numeric: true },
+        { key: 'disputeCount', label: 'Disputes', numeric: true },
+        { key: 'avgTtfqHours', label: 'Avg TTFQ (h)', numeric: true },
+        { key: 'avgReviewScore', label: 'Avg review', numeric: true },
+        { key: 'grossRevenue', label: 'Gross €', numeric: true, format: fmtMoney },
+        { key: 'platformRevenue', label: 'Platform €', numeric: true, format: fmtMoney },
+      ],
+      customer: [
+        { key: 'name', label: 'Name' },
+        { key: 'email', label: 'Email', format: emailFormat },
+        { key: 'city', label: 'City' },
+        { key: 'loyaltyLevel', label: 'Loyalty' },
+        { key: 'rfqsCreated', label: 'RFQs', numeric: true },
+        { key: 'bookingsCount', label: 'Bookings', numeric: true },
+        { key: 'completedCount', label: 'Completed', numeric: true },
+        { key: 'disputeCount', label: 'Disputes', numeric: true },
+        { key: 'refundCount', label: 'Refunds', numeric: true },
+        { key: 'reschedulingCount', label: 'Reschedules', numeric: true },
+        { key: 'avgPaymentTimeHours', label: 'Avg pay (h)', numeric: true },
+        { key: 'grossSpend', label: 'Gross spend €', numeric: true, format: fmtMoney },
+        { key: 'platformRevenue', label: 'Platform €', numeric: true, format: fmtMoney },
+      ],
     }
-    return out
-  }, [appliedFrom, appliedTo, activeTab, tabRowsMap])
+  }, [showEmails])
+
+  const activeChartData = useMemo(() => {
+    const columns = columnsByTab[activeTab]
+    const sort = sortByTab[activeTab]
+    const sortColumn = columns.find((c) => c.key === sort.key)
+    const chartKey = sortColumn?.numeric ? sort.key : 'platformRevenue'
+    const labelKey = TAB_LABEL_KEY[activeTab]
+    return activeSorted.slice(0, 12).map((r) => ({
+      name: String(r[labelKey] ?? '—'),
+      value: Number(r[chartKey]) || 0,
+      rowKey: makeRowKey(activeTab, r),
+    }))
+  }, [activeSorted, activeTab, sortByTab, columnsByTab])
+
+  const toggleSortForTab = useCallback((tab: TabKey, key: string) => {
+    setSortByTab((prev) => {
+      const cur = prev[tab]
+      const next = cur.key === key
+        ? { key, dir: (cur.dir === 'asc' ? 'desc' : 'asc') as SortDir }
+        : { key, dir: 'desc' as SortDir }
+      return { ...prev, [tab]: next }
+    })
+  }, [])
 
   if (authLoading) return null
   if (!user || user.role !== 'admin') return null
-
-  const regionColumns = [
-    { key: 'city', label: 'City' },
-    { key: 'signUps', label: 'Sign-ups', numeric: true },
-    { key: 'views', label: 'Views', numeric: true },
-    { key: 'totalBookings', label: 'Bookings', numeric: true },
-    { key: 'bookedValue', label: 'Booked €', numeric: true, format: fmtMoney },
-    { key: 'platformRevenue', label: 'Platform €', numeric: true, format: fmtMoney },
-    { key: 'quotationConversionRate', label: 'Convert %', numeric: true, format: fmtPct },
-    { key: 'disputeRate', label: 'Dispute %', numeric: true, format: fmtPct },
-    { key: 'warrantyClaimRate', label: 'Warranty %', numeric: true, format: fmtPct },
-    { key: 'refundRate', label: 'Refund %', numeric: true, format: fmtPct },
-  ]
-  const serviceColumns = [
-    { key: 'serviceType', label: 'Service type' },
-    { key: 'totalRfqs', label: 'RFQs', numeric: true },
-    { key: 'quotedCount', label: 'Quotes', numeric: true },
-    { key: 'bookingsCount', label: 'Bookings', numeric: true },
-    { key: 'completedCount', label: 'Completed', numeric: true },
-    { key: 'grossRevenue', label: 'Gross €', numeric: true, format: fmtMoney },
-    { key: 'quotationConversionRate', label: 'Convert %', numeric: true, format: fmtPct },
-    { key: 'avgTtfqHours', label: 'Avg TTFQ (h)', numeric: true },
-  ]
-  const subprojectColumns = [
-    { key: 'projectTitle', label: 'Project' },
-    { key: 'subprojectName', label: 'Subproject' },
-    { key: 'totalRfqs', label: 'RFQs', numeric: true },
-    { key: 'bookingsCount', label: 'Bookings', numeric: true },
-    { key: 'completedCount', label: 'Completed', numeric: true },
-    { key: 'disputeCount', label: 'Disputes', numeric: true },
-    { key: 'refundCount', label: 'Refunds', numeric: true },
-    { key: 'reschedulingCount', label: 'Reschedules', numeric: true },
-    { key: 'grossRevenue', label: 'Gross €', numeric: true, format: fmtMoney },
-    { key: 'price', label: 'Price', numeric: true, format: fmtMoney },
-  ]
-  const emailFormat = showEmails ? undefined : maskEmail
-  const professionalColumns = [
-    { key: 'name', label: 'Name' },
-    { key: 'email', label: 'Email', format: emailFormat },
-    { key: 'city', label: 'City' },
-    { key: 'professionalLevel', label: 'Level' },
-    { key: 'createdProjects', label: 'Projects', numeric: true },
-    { key: 'rfqsReceived', label: 'RFQs', numeric: true },
-    { key: 'quotedCount', label: 'Quoted', numeric: true },
-    { key: 'bookingsCount', label: 'Bookings', numeric: true },
-    { key: 'completedCount', label: 'Completed', numeric: true },
-    { key: 'disputeCount', label: 'Disputes', numeric: true },
-    { key: 'avgTtfqHours', label: 'Avg TTFQ (h)', numeric: true },
-    { key: 'avgReviewScore', label: 'Avg review', numeric: true },
-    { key: 'grossRevenue', label: 'Gross €', numeric: true, format: fmtMoney },
-  ]
-  const customerColumns = [
-    { key: 'name', label: 'Name' },
-    { key: 'email', label: 'Email', format: emailFormat },
-    { key: 'city', label: 'City' },
-    { key: 'loyaltyLevel', label: 'Loyalty' },
-    { key: 'rfqsCreated', label: 'RFQs', numeric: true },
-    { key: 'bookingsCount', label: 'Bookings', numeric: true },
-    { key: 'completedCount', label: 'Completed', numeric: true },
-    { key: 'disputeCount', label: 'Disputes', numeric: true },
-    { key: 'refundCount', label: 'Refunds', numeric: true },
-    { key: 'reschedulingCount', label: 'Reschedules', numeric: true },
-    { key: 'avgPaymentTimeHours', label: 'Avg pay (h)', numeric: true },
-    { key: 'grossSpend', label: 'Gross spend €', numeric: true, format: fmtMoney },
-  ]
-
-  const regionBarData = regions.slice(0, 10).map((r) => ({ name: String(r.city ?? ''), bookedValue: Number(r.bookedValue) || 0, platformRevenue: Number(r.platformRevenue) || 0 }))
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
@@ -616,7 +662,20 @@ export default function AdminKpiDashboard() {
             <TabsTrigger value="customer">By Customer</TabsTrigger>
           </TabsList>
 
-          {(['city', 'service', 'subproject', 'professional', 'customer'] as TabKey[]).map((tab) => (
+          {(['city', 'service', 'subproject', 'professional', 'customer'] as TabKey[]).map((tab) => {
+            const columns: KpiColumn[] =
+              columnsByTab[tab]
+            const isActive = tab === activeTab
+            const sort = sortByTab[tab]
+            const sorted = isActive ? activeSorted : []
+            const selectedKey = selectedByTab[tab]
+            const sortColumn = columns.find((c) => c.key === sort.key)
+            const chartKey = sortColumn?.numeric ? sort.key : 'platformRevenue'
+            const chartColumn = columns.find((c) => c.key === chartKey)
+            const chartLabel = chartColumn?.label || 'Platform €'
+            const chartFmt = chartColumn?.format
+            const chartData = isActive ? activeChartData : []
+            return (
             <TabsContent value={tab} key={tab}>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
@@ -633,55 +692,51 @@ export default function AdminKpiDashboard() {
                 <CardContent className="space-y-4">
                   <div className="h-56">
                     <ResponsiveContainer width="100%" height="100%">
-                      {tab === 'city' ? (
-                        <BarChart data={regionBarData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="name" />
-                          <YAxis />
-                          <Tooltip />
-                          <Legend />
-                          <Bar dataKey="bookedValue" fill="#3b82f6" name="Booked value (EUR)" />
-                          <Bar dataKey="platformRevenue" fill="#10b981" name="Platform revenue (EUR)" />
-                        </BarChart>
-                      ) : (
-                        <LineChart data={evolution}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="date" />
-                          <YAxis />
-                          <Tooltip />
-                          <Legend />
-                          <Line type="monotone" dataKey="bookings" stroke="#3b82f6" name="Bookings (cumulative)" />
-                        </LineChart>
-                      )}
+                      <BarChart data={chartData} margin={{ bottom: 24 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={50} />
+                        <YAxis />
+                        <Tooltip formatter={(v: number | string) => (chartFmt ? chartFmt(v) : v)} />
+                        <Bar
+                          dataKey="value"
+                          name={chartLabel}
+                          isAnimationActive={false}
+                          cursor="pointer"
+                          onClick={(_data: unknown, index: number) => {
+                            const rowKey = chartData[index]?.rowKey
+                            if (rowKey) setSelectedByTab((p) => ({ ...p, [tab]: p[tab] === rowKey ? null : rowKey }))
+                          }}
+                        >
+                          {chartData.map((d) => (
+                            <Cell
+                              key={d.rowKey}
+                              fill={selectedKey && d.rowKey === selectedKey ? '#1d4ed8' : '#93c5fd'}
+                              cursor="pointer"
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
                     </ResponsiveContainer>
                   </div>
-                  {tab !== 'city' && (
-                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-                      Note: this evolution line is a linear projection of period totals, not an actual time series. Use the totals in the table for accuracy.
-                    </p>
-                  )}
+                  <p className="text-xs text-gray-500">
+                    Showing <span className="font-medium">{chartLabel}</span> across the top {Math.min(12, chartData.length)} rows. Click a column header to change the metric, or a row/bar to highlight it.
+                  </p>
                   <SortableTable
-                    columns={
-                      tab === 'city' ? regionColumns
-                      : tab === 'service' ? serviceColumns
-                      : tab === 'subproject' ? subprojectColumns
-                      : tab === 'professional' ? professionalColumns
-                      : customerColumns
-                    }
-                    rows={tabRowsMap[tab]}
+                    columns={columns}
+                    sortedRows={sorted}
                     loading={loading}
-                    defaultSortKey={
-                      tab === 'city' ? 'bookedValue'
-                      : tab === 'service' ? 'bookingsCount'
-                      : tab === 'subproject' ? 'bookingsCount'
-                      : tab === 'professional' ? 'grossRevenue'
-                      : 'grossSpend'
-                    }
+                    sortKey={sort.key}
+                    sortDir={sort.dir}
+                    onToggleSort={(k) => toggleSortForTab(tab, k)}
+                    rowKeyOf={(r) => makeRowKey(tab, r)}
+                    selectedRowKey={selectedKey}
+                    onRowSelect={(k) => setSelectedByTab((p) => ({ ...p, [tab]: p[tab] === k ? null : k }))}
                   />
                 </CardContent>
               </Card>
             </TabsContent>
-          ))}
+            )
+          })}
         </Tabs>
       </div>
     </div>
