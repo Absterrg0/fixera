@@ -22,6 +22,7 @@ import StartChatButton from "@/components/chat/StartChatButton"
 import ReviewModal from "@/components/booking/ReviewModal"
 import QuotationWizard from "@/components/quotation/QuotationWizard"
 import AvailabilityDatePicker from "@/components/booking/AvailabilityDatePicker"
+import CustomerRefundOffer from "@/components/booking/CustomerRefundOffer"
 import { StripeProvider } from "@/components/stripe/StripeProvider"
 import { PaymentForm } from "@/components/stripe/PaymentForm"
 import type { QuoteVersion, BookingMilestone } from "@/types/quotation"
@@ -2203,6 +2204,14 @@ export default function BookingDetailPage() {
               {error}
             </CardContent>
           </Card>
+        )}
+
+        {!error && user?.role === 'customer' && bookingId && (
+          <CustomerRefundOffer
+            bookingId={bookingId}
+            currency={booking?.payment?.currency || 'EUR'}
+            onResolved={refreshBooking}
+          />
         )}
 
         {/* Refund banner — shown to customer when payment has been refunded */}

@@ -511,7 +511,7 @@ export default function BookingTimelineBoard({
     const confirmed = window.confirm(
       action === "accept"
         ? "Accept the proposed reschedule?"
-        : "Declining will cancel this booking. Continue?"
+        : "Declining will refund you and cancel this booking. Continue?"
     )
     if (!confirmed) return
 
@@ -524,7 +524,7 @@ export default function BookingTimelineBoard({
           headers: withAuthHeaders(),
           body: JSON.stringify({ action }),
         }),
-      action === "accept" ? "Reschedule accepted." : "Reschedule declined."
+      action === "accept" ? "Reschedule accepted." : "Reschedule declined and refund issued."
     )
   }
 
@@ -613,8 +613,11 @@ export default function BookingTimelineBoard({
         <Button key="accept" size="sm" className="h-6 text-[10px] px-1.5 bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => handleRespondReschedule(booking._id, "accept")} disabled={busy}>
           Accept
         </Button>,
-        <Button key="decline" variant="outline" size="sm" className="h-6 text-[10px] px-1.5 border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => handleRespondReschedule(booking._id, "decline")} disabled={busy}>
-          Decline
+        <Button key="refund" variant="outline" size="sm" className="h-6 text-[10px] px-1.5 border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => handleRespondReschedule(booking._id, "decline")} disabled={busy}>
+          Refund
+        </Button>,
+        <Button key="dispute" variant="outline" size="sm" className="h-6 text-[10px] px-1.5 border-amber-200 text-amber-700 hover:bg-amber-50" onClick={() => router.push(`/bookings/${booking._id}?dispute=1`)} disabled={busy}>
+          <XCircle className="mr-1 h-3 w-3" />Dispute
         </Button>
       )
     }

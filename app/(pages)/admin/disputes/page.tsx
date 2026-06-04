@@ -91,6 +91,9 @@ interface DisputeBooking {
     negotiationAmount?: number
   }
   createdAt?: string
+  readOnly?: boolean
+  source?: 'warranty' | 'refund'
+  resolveHref?: string
 }
 
 interface DisputeAnalytics {
@@ -101,7 +104,7 @@ interface DisputeAnalytics {
 
 type DisputeFilter = 'all' | 'open' | 'resolved'
 type ResolveAction = 'accept_professional' | 'reject_extra_costs' | 'adjust'
-type ForceStatus = 'keep' | 'completed' | 'cancelled' | 'refunded' | 'in_progress'
+type ForceStatus = 'keep' | 'completed' | 'cancelled' | 'refunded' | 'in_progress' | 'booked'
 
 interface ResolveDisputeRequest {
   action: ResolveAction
@@ -272,12 +275,26 @@ export default function AdminDisputesPage() {
         return
       }
       toast.success(`Support conversation ready (id: ${conversationId})`)
-      window.open(`/chat?conversationId=${conversationId}`, '_blank', 'noopener')
+      window.open(`/admin/chat?conversationId=${conversationId}`, '_blank', 'noopener')
     } catch (e) {
       console.error('start support chat failed', e)
       toast.error('Failed to start support chat')
     } finally {
       setStartingChatFor(null)
+    }
+  }, [])
+
+  const viewCustomerProChat = useCallback(async (dispute: DisputeBooking) => {
+    try {
+      const res = await authFetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/admin/bookings/${dispute._id}/conversation`)
+      const json = await res.json()
+      if (!res.ok || !json?.success || !json?.data?.conversationId) {
+        toast.error(json?.msg || 'No customer↔professional chat found for this booking')
+        return
+      }
+      window.open(`/admin/chat?conversationId=${json.data.conversationId}`, '_blank', 'noopener')
+    } catch {
+      toast.error('Failed to open customer↔professional chat')
     }
   }, [])
 
@@ -487,15 +504,23 @@ export default function AdminDisputesPage() {
                           </p>
                         )}
                         <div className="flex flex-wrap gap-2 pt-2">
+                          {d.readOnly ? (
+                            <Badge variant="outline" className="text-xs">
+                              {d.source === 'warranty' ? 'Warranty claim' : 'Refund request'} · manage in its dashboard
+                            </Badge>
+                          ) : (
                           <Button
                             size="sm"
                             variant="secondary"
                             className="h-7 text-xs"
-                            onClick={() => window.open(`/bookings/${d._id}`, '_blank', 'noopener')}
+                            onClick={() => viewCustomerProChat(d)}
                           >
                             <MessageSquare className="h-3 w-3 mr-1" />
                             View customer↔pro chat
                           </Button>
+                          )}
+                          {!d.readOnly && (
+                          <>
                           <Button
                             size="sm"
                             variant="secondary"
@@ -516,29 +541,43 @@ export default function AdminDisputesPage() {
                             {startingPro ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <MessageSquare className="h-3 w-3 mr-1" />}
                             Open dispute chat with professional
                           </Button>
+                          </>
+                          )}
                         </div>
                       </div>
                       <div className="flex flex-col gap-1 items-end shrink-0">
                         <p className="text-xs text-gray-400">
                           {d.dispute?.raisedAt ? new Date(d.dispute.raisedAt).toLocaleDateString() : ''}
                         </p>
-                        {!d.dispute?.resolvedAt && (
+                        {d.readOnly ? (
                           <Button
                             size="sm"
                             className="h-7 text-xs"
-                            onClick={() => openResolveDialog(d)}
+                            onClick={() => router.push(d.resolveHref || '/admin')}
                           >
-                            Resolve
+                            Review in dashboard
                           </Button>
+                        ) : (
+                          <>
+                            {!d.dispute?.resolvedAt && (
+                              <Button
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => openResolveDialog(d)}
+                              >
+                                Resolve
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs"
+                              onClick={() => router.push(`/bookings/${d._id}`)}
+                            >
+                              View Booking
+                            </Button>
+                          </>
                         )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs"
-                          onClick={() => router.push(`/bookings/${d._id}`)}
-                        >
-                          View Booking
-                        </Button>
                       </div>
                     </div>
                   </CardContent>
@@ -595,11 +634,21 @@ export default function AdminDisputesPage() {
                 {selectedDisputeType === 'extra_costs' && selectedDispute.extraCosts && selectedDispute.extraCosts.length > 0 && (
                   <div className="bg-gray-50 rounded p-3 space-y-1.5">
                     <p className="text-xs font-semibold text-gray-700">Extra costs declared by professional:</p>
+                    <div className="text-xs text-gray-500 space-y-0.5">
+                      <p><span className="text-gray-400">Date requested:</span> {formatDate(selectedDispute.completionAttestation?.confirmedAt || selectedDispute.dispute?.raisedAt)}</p>
+                      <p><span className="text-gray-400">Expected completion date:</span> {formatDateOnly(selectedDispute.scheduledExecutionEndDate)}</p>
+                    </div>
                     {selectedDispute.extraCosts.map((cost, i) => (
                       <div key={i} className="flex justify-between text-xs border-b border-gray-100 pb-1 last:border-0">
                         <div>
                           <span className="font-medium">{cost.name}</span>
                           <span className="text-gray-500 ml-1 capitalize">({cost.type.replace('_', ' ')})</span>
+                          {(cost.estimatedUnits != null || cost.actualUnits != null) && (
+                            <p className="text-gray-500">
+                              Units — estimated: {cost.estimatedUnits ?? '—'}, actual: {cost.actualUnits ?? '—'}
+                              {cost.unitPrice != null ? ` (@ ${cost.unitPrice.toFixed(2)})` : ''}
+                            </p>
+                          )}
                           <p className="text-gray-400 italic">{cost.justification}</p>
                         </div>
                         <span className="font-semibold shrink-0 ml-2">{cost.amount.toFixed(2)}</span>
@@ -609,6 +658,19 @@ export default function AdminDisputesPage() {
                       <span>Total</span>
                       <span>{(selectedDispute.extraCostTotal || 0).toFixed(2)}</span>
                     </div>
+                    {selectedDispute.completionAttestation?.notes && (
+                      <p className="text-xs text-gray-600 pt-1"><span className="text-gray-400">Completion description:</span> {selectedDispute.completionAttestation.notes}</p>
+                    )}
+                    {selectedDispute.completionAttestation?.attachments && selectedDispute.completionAttestation.attachments.length > 0 && (
+                      <div className="pt-1 flex flex-wrap gap-2">
+                        {selectedDispute.completionAttestation.attachments.map((url) => (
+                          <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="text-xs underline text-blue-700 break-all">
+                            <Paperclip className="h-3 w-3 inline mr-1" />
+                            {fileNameFromUrl(url)}
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -692,6 +754,10 @@ export default function AdminDisputesPage() {
                 {selectedDisputeType === 'reschedule' && (
                   <div className="bg-gray-50 rounded p-3 space-y-1.5 text-xs">
                     <p className="font-semibold text-gray-700">Reschedule request</p>
+                    <p>
+                      <span className="text-gray-500">Initial start date:</span>{' '}
+                      {formatDateOnly(selectedDispute.scheduledStartDate)}
+                    </p>
                     <p><span className="text-gray-500">Reason for reschedule:</span> {selectedDispute.rescheduleRequest?.reason || '—'}</p>
                     <p>
                       <span className="text-gray-500">Proposed new date:</span>{' '}
@@ -702,9 +768,17 @@ export default function AdminDisputesPage() {
                 )}
 
                 {selectedDisputeType === 'in_progress' && (
-                  <div className="bg-gray-50 rounded p-3 text-xs">
+                  <div className="bg-gray-50 rounded p-3 space-y-1.5 text-xs">
                     <p className="font-semibold text-gray-700">In-progress dispute</p>
-                    <p className="text-gray-600">No type-specific data; close the dispute or issue a custom refund.</p>
+                    <p>
+                      <span className="text-gray-500">Booking price:</span>{' '}
+                      {selectedDispute.payment?.currency || 'EUR'} {(selectedDispute.payment?.amount ?? 0).toFixed(2)}
+                    </p>
+                    <p>
+                      <span className="text-gray-500">Start date:</span>{' '}
+                      {formatDateOnly(selectedDispute.actualStartDate || selectedDispute.scheduledStartDate)}
+                    </p>
+                    <p className="text-gray-600">Close the dispute or issue a custom refund.</p>
                   </div>
                 )}
 
@@ -832,6 +906,7 @@ export default function AdminDisputesPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="keep">Keep (default: completed)</SelectItem>
+                      <SelectItem value="booked">booked</SelectItem>
                       <SelectItem value="completed">completed</SelectItem>
                       <SelectItem value="cancelled">cancelled</SelectItem>
                       <SelectItem value="refunded">refunded</SelectItem>

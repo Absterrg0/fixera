@@ -14,6 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ArrowLeft, Briefcase, Calendar, Clock, FileText, GitCompareArrows, Loader2, Package, Plus, RefreshCw, Search } from "lucide-react"
 import QuoteComparisonModal from "@/components/dashboard/QuoteComparisonModal"
 import BookingTimelineBoard from "@/components/dashboard/BookingTimelineBoard"
+import RefundRequestsPanel from "@/components/dashboard/RefundRequestsPanel"
 import {
   type BookingStatus,
   QUOTE_STATUSES,
@@ -690,6 +691,8 @@ export default function ProfessionalBookingsQuotesManager({ mode }: Professional
           <h1 className="text-3xl font-bold text-gray-900">{pageCopy.title}</h1>
           <p className="text-gray-600 mt-1">{pageCopy.description}</p>
         </div>
+
+        {mode === "bookings" && <RefundRequestsPanel />}
 
         <div className="grid md:grid-cols-3 gap-4">
           <Card>
