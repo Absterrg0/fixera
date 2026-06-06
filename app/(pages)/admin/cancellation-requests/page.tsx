@@ -20,7 +20,7 @@ interface CancellationRequestItem {
   _id: string
   status: 'pending' | 'approved' | 'denied'
   reasonCategory?: string
-  reason: string
+  reason?: string
   evidence?: string[]
   denyReason?: string
   refundAmount?: number
@@ -201,6 +201,16 @@ export default function AdminCancellationRequestsPage() {
             {items.map((item) => {
               const total = item.booking?.payment?.totalWithVat || 0
               const currency = item.booking?.payment?.currency || 'EUR'
+              const categoryLabel = item.reasonCategory
+                ? (CANCEL_REASONS.find((r) => r.value === item.reasonCategory)?.label || item.reasonCategory)
+                : undefined
+              const safeEvidence = (Array.isArray(item.evidence) ? item.evidence : []).filter((e) => {
+                try {
+                  return ['http:', 'https:'].includes(new URL(e).protocol)
+                } catch {
+                  return false
+                }
+              })
               return (
                 <Card key={item._id} className="hover:shadow-md transition-shadow">
                   <CardContent className="pt-4 pb-4">
@@ -225,17 +235,19 @@ export default function AdminCancellationRequestsPage() {
                           {' | '}
                           Professional: {item.booking?.professional?.name || '—'}
                         </p>
-                        {item.reasonCategory && (
+                        {categoryLabel && (
                           <p className="text-xs text-red-600 font-medium mt-1">
-                            Category: {CANCEL_REASONS.find((r) => r.value === item.reasonCategory)?.label || item.reasonCategory}
+                            Category: {categoryLabel}
                           </p>
                         )}
-                        <p className="text-xs text-red-600 font-medium mt-1">Reason: {item.reason}</p>
-                        {Array.isArray(item.evidence) && item.evidence.length > 0 && (
+                        {item.reason && item.reason !== categoryLabel && (
+                          <p className="text-xs text-red-600 font-medium mt-1">Reason: {item.reason}</p>
+                        )}
+                        {safeEvidence.length > 0 && (
                           <p className="text-xs text-gray-600 mt-0.5 flex flex-wrap gap-2">
                             <span>Attachments:</span>
-                            {item.evidence.map((url, i) => (
-                              <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                            {safeEvidence.map((url, i) => (
+                              <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
                                 File {i + 1}
                               </a>
                             ))}
