@@ -71,6 +71,7 @@ interface DisputeBooking {
   cancellation?: {
     reason?: string
     cancelledAt?: string
+    refundAmount?: number
   }
   dispute?: {
     raisedBy: string
@@ -112,6 +113,8 @@ interface ResolveDisputeRequest {
   adjustedAmount?: number
   forceStatus?: Exclude<ForceStatus, 'keep'>
   resolutionAttachments?: string[]
+  forcedStartDate?: string
+  forcedStartTime?: string
 }
 
 const DISPUTE_TYPE_LABEL: Record<DisputeType, string> = {
@@ -190,6 +193,9 @@ export default function AdminDisputesPage() {
   const [resolutionAttachments, setResolutionAttachments] = useState<string[]>([])
   const [uploadingAttachment, setUploadingAttachment] = useState(false)
   const [startingChatFor, setStartingChatFor] = useState<string | null>(null)
+  const [resolveInfoDispute, setResolveInfoDispute] = useState<DisputeBooking | null>(null)
+  const [resolveForcedStartDate, setResolveForcedStartDate] = useState('')
+  const [resolveForcedStartTime, setResolveForcedStartTime] = useState('')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const selectedDisputeType: DisputeType = useMemo(() => {
@@ -206,6 +212,8 @@ export default function AdminDisputesPage() {
     setResolveAction('accept_professional')
     setResolveAdjustedAmount('')
     setResolveResolution('')
+    setResolveForcedStartDate('')
+    setResolveForcedStartTime('')
     setForceStatus('keep')
     setResolutionAttachments([])
   }, [])
@@ -381,6 +389,10 @@ export default function AdminDisputesPage() {
       }
       if (resolutionAttachments.length > 0) {
         body.resolutionAttachments = resolutionAttachments
+      }
+      if (selectedDisputeType === 'reschedule' && resolveForcedStartDate) {
+        body.forcedStartDate = resolveForcedStartDate
+        if (resolveForcedStartTime) body.forcedStartTime = resolveForcedStartTime
       }
       const res = await authFetch(
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/admin/disputes/${selectedDispute._id}/resolve`,
@@ -580,6 +592,16 @@ export default function AdminDisputesPage() {
                                 onClick={() => openResolveDialog(d)}
                               >
                                 Resolve
+                              </Button>
+                            )}
+                            {d.dispute?.resolvedAt && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs"
+                                onClick={() => setResolveInfoDispute(d)}
+                              >
+                                View resolve
                               </Button>
                             )}
                             <Button
@@ -796,6 +818,27 @@ export default function AdminDisputesPage() {
                   </div>
                 )}
 
+                {selectedDisputeType === 'reschedule' && (
+                  <div className="space-y-2">
+                    <Label>Force a new start date (optional)</Label>
+                    <div className="flex gap-2">
+                      <input
+                        type="date"
+                        value={resolveForcedStartDate}
+                        onChange={(e) => setResolveForcedStartDate(e.target.value)}
+                        className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      />
+                      <input
+                        type="time"
+                        value={resolveForcedStartTime}
+                        onChange={(e) => setResolveForcedStartTime(e.target.value)}
+                        className="w-32 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500">If set, the booking is rescheduled to this start date (time required for hourly projects) and forced to &quot;booked&quot;.</p>
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <Label>Resolution Action</Label>
                   <Select value={resolveAction} onValueChange={(value: ResolveAction) => setResolveAction(value)}>
@@ -1007,6 +1050,49 @@ export default function AdminDisputesPage() {
                     {resolving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                     Resolve Dispute
                   </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!resolveInfoDispute} onOpenChange={(open) => !open && setResolveInfoDispute(null)}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Resolution — {resolveInfoDispute?.bookingNumber}</DialogTitle>
+            </DialogHeader>
+            {resolveInfoDispute && (
+              <div className="space-y-3 text-sm">
+                <div className="grid grid-cols-2 gap-2">
+                  <p><span className="text-gray-500">Type:</span> {DISPUTE_TYPE_LABEL[resolveInfoDispute.dispute?.type || 'extra_costs']}</p>
+                  <p><span className="text-gray-500">Final status:</span> {resolveInfoDispute.status}</p>
+                  <p><span className="text-gray-500">Resolved on:</span> {formatDate(resolveInfoDispute.dispute?.resolvedAt)}</p>
+                  {resolveInfoDispute.dispute?.adminAdjustedAmount != null && (
+                    <p><span className="text-gray-500">Adjusted amount:</span> {resolveInfoDispute.payment?.currency || 'EUR'} {resolveInfoDispute.dispute.adminAdjustedAmount.toFixed(2)}</p>
+                  )}
+                  {resolveInfoDispute.cancellation?.refundAmount != null && (
+                    <p><span className="text-gray-500">Refund amount:</span> {resolveInfoDispute.payment?.currency || 'EUR'} {resolveInfoDispute.cancellation.refundAmount.toFixed(2)}</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-gray-500">Resolution notes:</p>
+                  <p className="whitespace-pre-wrap">{resolveInfoDispute.dispute?.resolution || '—'}</p>
+                </div>
+                {resolveInfoDispute.dispute?.resolutionAttachments && resolveInfoDispute.dispute.resolutionAttachments.length > 0 && (
+                  <div>
+                    <p className="text-gray-500 mb-1">Resolution attachments:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {resolveInfoDispute.dispute.resolutionAttachments.map((url) => (
+                        <a key={url} href={isValidHttpUrl(url) ? url : '#'} target="_blank" rel="noopener noreferrer" className="text-xs underline text-blue-700 break-all">
+                          <Paperclip className="h-3 w-3 inline mr-1" />
+                          {fileNameFromUrl(url)}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="flex justify-end">
+                  <Button variant="outline" size="sm" onClick={() => setResolveInfoDispute(null)}>Close</Button>
                 </div>
               </div>
             )}
