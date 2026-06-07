@@ -206,6 +206,7 @@ export default function ChatPage() {
     ? getOtherParticipant(selectedConversation, userRole)
     : null;
   const isSupportConversation = selectedConversation?.type === "support";
+  const isSupportClosed = isSupportConversation && selectedConversation?.status === "archived";
   const otherName = isSupportConversation
     ? "Fixera Support"
     : otherParticipant?.username || otherParticipant?.name || "Conversation";
@@ -872,13 +873,19 @@ export default function ChatPage() {
             </div>
 
             {/* Composer */}
-            <ChatComposer
-              disabled={!selectedConversationId}
-              sending={sending}
-              replyTo={replyToMessage}
-              onCancelReply={() => setReplyToMessage(null)}
-              onSend={handleSend}
-            />
+            {isSupportClosed ? (
+              <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm text-slate-500">
+                🔒 This support chat has been closed by Fixera. You can no longer reply.
+              </div>
+            ) : (
+              <ChatComposer
+                disabled={!selectedConversationId}
+                sending={sending}
+                replyTo={replyToMessage}
+                onCancelReply={() => setReplyToMessage(null)}
+                onSend={handleSend}
+              />
+            )}
           </>
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-gray-400">

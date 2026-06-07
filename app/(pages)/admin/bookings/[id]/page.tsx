@@ -8,8 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ArrowLeft, RefreshCw } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ArrowLeft, RefreshCw, MessageSquare } from "lucide-react"
 import { toast } from "sonner"
+import { FORCEABLE_BOOKING_STATUSES } from "@/lib/constants/adminBookingStatus"
 
 interface Refund {
   amount: number
@@ -93,6 +95,9 @@ export default function AdminBookingDetailPage() {
 
   const [data, setData] = useState<BookingDetailPayload | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [forceStatusValue, setForceStatusValue] = useState("")
+  const [forcingStatus, setForcingStatus] = useState(false)
+  const [startingChat, setStartingChat] = useState<'customer' | 'professional' | null>(null)
 
   useEffect(() => {
     if (!loading && (!user || user.role !== 'admin')) {
@@ -121,6 +126,64 @@ export default function AdminBookingDetailPage() {
   useEffect(() => {
     if (user?.role === 'admin') fetch()
   }, [user, fetch])
+
+  const handleForceStatus = useCallback(async () => {
+    if (!id || !forceStatusValue) return
+    setForcingStatus(true)
+    try {
+      const res = await authFetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/admin/bookings/${id}/force-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: forceStatusValue }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json.success) {
+        toast.error(json.msg || 'Failed to force status')
+        return
+      }
+      toast.success(`Status changed to "${forceStatusValue}"`)
+      setForceStatusValue("")
+      await fetch()
+    } catch {
+      toast.error('Failed to force status')
+    } finally {
+      setForcingStatus(false)
+    }
+  }, [id, forceStatusValue, fetch])
+
+  const handleStartSupportChat = useCallback(async (target: 'customer' | 'professional') => {
+    const targetUserId = target === 'customer' ? data?.booking.customer?._id : data?.booking.professional?._id
+    if (!targetUserId) {
+      toast.error(`Booking has no linked ${target}`)
+      return
+    }
+    const newWindow = window.open('about:blank', '_blank')
+    setStartingChat(target)
+    try {
+      const res = await authFetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/admin/chat/start-support`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetUserId,
+          initialMessage: `Hello — I'm reaching out from Fixera about booking ${data?.booking.bookingNumber || ''}.`,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json.success || !json.data?.conversationId) {
+        newWindow?.close()
+        toast.error(json.msg || 'Failed to start support chat')
+        return
+      }
+      const url = `/admin/chat?${new URLSearchParams({ conversationId: json.data.conversationId }).toString()}`
+      if (newWindow) newWindow.location.href = url
+      else window.open(url, '_blank', 'noopener')
+    } catch {
+      newWindow?.close()
+      toast.error('Failed to start support chat')
+    } finally {
+      setStartingChat(null)
+    }
+  }, [data])
 
   if (loading || !user) return null
 
@@ -163,14 +226,54 @@ export default function AdminBookingDetailPage() {
                     Payment: {formatMoney(data.booking.payment.totalWithVat, data.booking.payment.currency)} ({data.booking.payment.status || 'n/a'})
                   </p>
                 )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-2"
-                  onClick={() => router.push(`/bookings/${data.booking._id}`)}
-                >
-                  Open customer view
-                </Button>
+                <div className="flex flex-wrap items-center gap-2 pt-3 border-t mt-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => router.push(`/bookings/${data.booking._id}`)}
+                  >
+                    Open customer view
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={startingChat === 'customer' || !data.booking.customer?._id}
+                    onClick={() => handleStartSupportChat('customer')}
+                  >
+                    <MessageSquare className="h-4 w-4 mr-1" />
+                    {startingChat === 'customer' ? 'Opening…' : 'Chat customer'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={startingChat === 'professional' || !data.booking.professional?._id}
+                    onClick={() => handleStartSupportChat('professional')}
+                  >
+                    <MessageSquare className="h-4 w-4 mr-1" />
+                    {startingChat === 'professional' ? 'Opening…' : 'Chat professional'}
+                  </Button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pt-3 border-t mt-3">
+                  <span className="text-xs text-gray-500">Force status:</span>
+                  <Select value={forceStatusValue} onValueChange={setForceStatusValue}>
+                    <SelectTrigger className="h-8 w-52 text-xs">
+                      <SelectValue placeholder="Select status…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FORCEABLE_BOOKING_STATUSES.filter((s) => s !== data.booking.status).map((s) => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    disabled={!forceStatusValue || forcingStatus}
+                    onClick={handleForceStatus}
+                  >
+                    {forcingStatus ? 'Applying…' : 'Apply'}
+                  </Button>
+                  <span className="text-[11px] text-gray-400">Status override only — does not trigger payments/refunds.</span>
+                </div>
               </CardContent>
             </Card>
 
