@@ -167,6 +167,7 @@ export default function AdminBookingDetailPage() {
       toast.error(`Booking has no linked ${target}`)
       return
     }
+    const newWindow = window.open('about:blank', '_blank')
     setStartingChat(target)
     try {
       const res = await authFetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/admin/chat/start-support`, {
@@ -179,11 +180,15 @@ export default function AdminBookingDetailPage() {
       })
       const json = await res.json()
       if (!res.ok || !json.success || !json.data?.conversationId) {
+        newWindow?.close()
         toast.error(json.msg || 'Failed to start support chat')
         return
       }
-      window.open(`/admin/chat?${new URLSearchParams({ conversationId: json.data.conversationId }).toString()}`, '_blank', 'noopener')
+      const url = `/admin/chat?${new URLSearchParams({ conversationId: json.data.conversationId }).toString()}`
+      if (newWindow) newWindow.location.href = url
+      else window.open(url, '_blank', 'noopener')
     } catch {
+      newWindow?.close()
       toast.error('Failed to start support chat')
     } finally {
       setStartingChat(null)

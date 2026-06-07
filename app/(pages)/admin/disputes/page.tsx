@@ -836,6 +836,9 @@ export default function AdminDisputesPage() {
                       />
                     </div>
                     <p className="text-xs text-gray-500">If set, the booking is rescheduled to this start date (time required for hourly projects) and forced to &quot;booked&quot;.</p>
+                    {resolveForcedStartDate && !resolveForcedStartTime && (
+                      <p className="text-xs text-amber-600">Add a start time — it&apos;s required to reschedule hourly bookings (ignored for day-based bookings).</p>
+                    )}
                   </div>
                 )}
 
