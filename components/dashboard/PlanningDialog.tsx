@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { format } from "date-fns"
+import { format, isValid, parseISO } from "date-fns"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -45,8 +45,8 @@ interface PlanningDialogProps {
 
 const toDateInput = (value?: string | null): string => {
   if (!value) return ""
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return ""
+  const d = parseISO(value)
+  if (!isValid(d)) return ""
   return d.toISOString().slice(0, 10)
 }
 
