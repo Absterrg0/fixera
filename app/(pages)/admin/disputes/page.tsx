@@ -107,6 +107,7 @@ interface DisputeBooking {
   resolveHref?: string
   bookingId?: string
   claimStatus?: string
+  claimNumber?: string
 }
 
 interface DisputeAnalytics {
@@ -461,6 +462,8 @@ export default function AdminDisputesPage() {
             }
             approveBody = { amount: parsedAmount }
           }
+          const approveNote = externalNote.trim()
+          if (approveNote) approveBody.note = approveNote
           const res = await authFetch(
             `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/admin/cancellation-requests/${realId}/approve`,
             { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(approveBody) }
@@ -1290,6 +1293,7 @@ export default function AdminDisputesPage() {
                     {externalDispute.dispute?.type === 'warranty_resolve' ? 'Resolve proposal' : 'Warranty claim'}
                     {externalDispute.claimStatus ? ` · ${externalDispute.claimStatus.replace(/_/g, ' ')}` : ''}
                   </p>
+                  <p><span className="text-gray-500">WC number:</span> {externalDispute.claimNumber || '—'}</p>
                   <p>
                     <span className="text-gray-500">Project warranty duration:</span>{' '}
                     {externalDispute.warrantyCoverage?.duration?.value != null && externalDispute.warrantyCoverage?.duration?.unit
@@ -1300,13 +1304,16 @@ export default function AdminDisputesPage() {
                   <p><span className="text-gray-500">Claim date:</span> {formatDateOnly(externalDispute.dispute?.raisedAt)}</p>
                   <p><span className="text-gray-500">Claim description:</span> {externalDispute.dispute?.description || '—'}</p>
                   {externalDispute.dispute?.attachments && externalDispute.dispute.attachments.length > 0 && (
-                    <div className="pt-1 flex flex-wrap gap-2">
-                      {externalDispute.dispute.attachments.map((url) => (
-                        <a key={url} href={isValidHttpUrl(url) ? url : '#'} target="_blank" rel="noopener noreferrer" className="underline text-blue-700 break-all">
-                          <Paperclip className="h-3 w-3 inline mr-1" />
-                          {fileNameFromUrl(url)}
-                        </a>
-                      ))}
+                    <div className="pt-1">
+                      <p className="text-gray-500 mb-1">Claim attachments:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {externalDispute.dispute.attachments.map((url) => (
+                          <a key={url} href={isValidHttpUrl(url) ? url : '#'} target="_blank" rel="noopener noreferrer" className="underline text-blue-700 break-all">
+                            <Paperclip className="h-3 w-3 inline mr-1" />
+                            {fileNameFromUrl(url)}
+                          </a>
+                        ))}
+                      </div>
                     </div>
                   )}
                   {externalDispute.dispute?.type === 'warranty_resolve' && (
@@ -1411,14 +1418,18 @@ export default function AdminDisputesPage() {
                   <p><span className="text-gray-500">Start date:</span> {formatDateOnly(externalDispute.actualStartDate || externalDispute.scheduledStartDate)}</p>
                   <p><span className="text-gray-500">Booking status:</span> {externalDispute.status || '—'}</p>
                   <p><span className="text-gray-500">Cancel reason:</span> {externalDispute.cancellation?.reason || externalDispute.dispute?.description || '—'}</p>
+                  <p className="whitespace-pre-wrap"><span className="text-gray-500">Explanation:</span> {externalDispute.dispute?.description || '—'}</p>
                   {externalDispute.dispute?.attachments && externalDispute.dispute.attachments.length > 0 && (
-                    <div className="pt-1 flex flex-wrap gap-2">
-                      {externalDispute.dispute.attachments.map((url) => (
-                        <a key={url} href={isValidHttpUrl(url) ? url : '#'} target="_blank" rel="noopener noreferrer" className="underline text-blue-700 break-all">
-                          <Paperclip className="h-3 w-3 inline mr-1" />
-                          {fileNameFromUrl(url)}
-                        </a>
-                      ))}
+                    <div className="pt-1">
+                      <p className="text-gray-500 mb-1">Attachments:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {externalDispute.dispute.attachments.map((url) => (
+                          <a key={url} href={isValidHttpUrl(url) ? url : '#'} target="_blank" rel="noopener noreferrer" className="underline text-blue-700 break-all">
+                            <Paperclip className="h-3 w-3 inline mr-1" />
+                            {fileNameFromUrl(url)}
+                          </a>
+                        ))}
+                      </div>
                     </div>
                   )}
                   <p><span className="text-gray-500">Negotiation date:</span> {formatDateOnly(externalDispute.dispute?.negotiationDate)}</p>
@@ -1477,6 +1488,18 @@ export default function AdminDisputesPage() {
                       value={externalNote}
                       onChange={(e) => setExternalNote(e.target.value)}
                       placeholder="Explain why the refund is denied..."
+                      className="min-h-[80px]"
+                    />
+                  </div>
+                )}
+
+                {(externalAction === 'approve' || externalAction === 'adjust') && (
+                  <div className="space-y-2">
+                    <Label>Resolution notes (optional)</Label>
+                    <Textarea
+                      value={externalNote}
+                      onChange={(e) => setExternalNote(e.target.value)}
+                      placeholder="Add resolution notes for the audit trail and booking record..."
                       className="min-h-[80px]"
                     />
                   </div>
