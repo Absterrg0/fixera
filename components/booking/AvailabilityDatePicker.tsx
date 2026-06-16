@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
-import { format, isSameDay, parseISO, startOfDay, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from 'date-fns'
+import { format, isSameDay, parseISO, startOfDay, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isValid } from 'date-fns'
 import { formatInTimeZone } from 'date-fns-tz'
 
 interface BlockedRange {
@@ -17,6 +17,7 @@ interface AvailabilityApiResponse {
   timezone?: string
   blockedDates?: string[]
   blockedRanges?: BlockedRange[]
+  earliestBookableDate?: string
 }
 
 interface AvailabilityDatePickerProps {
@@ -29,6 +30,7 @@ interface AvailabilityDatePickerProps {
   id?: string
   ariaLabel?: string
   excludeBookingId?: string
+  subprojectIndex?: number
 }
 
 const formatYMD = (d: Date) => format(d, 'yyyy-MM-dd')
@@ -43,11 +45,13 @@ export default function AvailabilityDatePicker({
   id,
   ariaLabel,
   excludeBookingId,
+  subprojectIndex,
 }: AvailabilityDatePickerProps) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [blockedDates, setBlockedDates] = useState<Set<string>>(new Set())
   const [blockedRanges, setBlockedRanges] = useState<BlockedRange[]>([])
+  const [apiEarliestDate, setApiEarliestDate] = useState<Date | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const initialMonth = useMemo(() => {
     if (value) {
@@ -66,6 +70,7 @@ export default function AvailabilityDatePicker({
     if (!projectId) {
       setBlockedDates(new Set())
       setBlockedRanges([])
+      setApiEarliestDate(null)
       setLoading(false)
       return
     }
@@ -74,8 +79,16 @@ export default function AvailabilityDatePicker({
     const fetchAvailability = async () => {
       try {
         let url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/public/projects/${projectId}/availability`
+        const params = new URLSearchParams()
         if (excludeBookingId) {
-          url += `${url.includes('?') ? '&' : '?'}excludeBookingId=${encodeURIComponent(excludeBookingId)}`
+          params.set('excludeBookingId', excludeBookingId)
+        }
+        if (typeof subprojectIndex === 'number') {
+          params.set('subprojectIndex', String(subprojectIndex))
+        }
+        const queryString = params.toString()
+        if (queryString) {
+          url += `?${queryString}`
         }
         const res = await fetch(url)
         if (!res.ok) {
@@ -83,6 +96,7 @@ export default function AvailabilityDatePicker({
             console.error(`Availability fetch failed: ${res.status} ${res.statusText}`)
             setBlockedDates(new Set())
             setBlockedRanges([])
+            setApiEarliestDate(null)
           }
           return
         }
@@ -102,15 +116,28 @@ export default function AvailabilityDatePicker({
               endDate: toLocalYmd(r.endDate),
             }))
           )
+          if (data.earliestBookableDate) {
+            const localYmd = toLocalYmd(data.earliestBookableDate)
+            const parsed = parseISO(localYmd)
+            if (isValid(parsed)) {
+              setApiEarliestDate(startOfDay(parsed))
+            } else {
+              setApiEarliestDate(null)
+            }
+          } else {
+            setApiEarliestDate(null)
+          }
         } else {
           setBlockedDates(new Set())
           setBlockedRanges([])
+          setApiEarliestDate(null)
         }
       } catch (err) {
         if (!cancelled) {
           console.error('Availability fetch error:', err)
           setBlockedDates(new Set())
           setBlockedRanges([])
+          setApiEarliestDate(null)
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -120,7 +147,7 @@ export default function AvailabilityDatePicker({
     return () => {
       cancelled = true
     }
-  }, [projectId, excludeBookingId])
+  }, [projectId, excludeBookingId, subprojectIndex])
 
   useEffect(() => {
     if (!open) return
@@ -134,7 +161,16 @@ export default function AvailabilityDatePicker({
   }, [open])
 
   const today = startOfDay(new Date())
-  const earliestDate = startOfDay(minDate || today)
+  const earliestDate = useMemo(() => {
+    let maxDate = today
+    if (apiEarliestDate && apiEarliestDate.getTime() > maxDate.getTime()) {
+      maxDate = apiEarliestDate
+    }
+    if (minDate && minDate.getTime() > maxDate.getTime()) {
+      maxDate = minDate
+    }
+    return startOfDay(maxDate)
+  }, [minDate, apiEarliestDate, today])
 
   const normalizedRanges = useMemo(() => {
     return blockedRanges

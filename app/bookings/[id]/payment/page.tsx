@@ -1474,7 +1474,7 @@ export default function BookingPaymentPage() {
               </div>
             )}
             <div className="space-y-2">
-              {hasDiscountBreakdown && (
+              {(hasDiscountBreakdown || commissionedOptionsAmount > 0) && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">Original Service Amount:</span>
                   <span className="text-gray-900">
@@ -1483,7 +1483,7 @@ export default function BookingPaymentPage() {
                 </div>
               )}
 
-              {hasDiscountBreakdown && commissionedOptionsAmount > 0 && (
+              {commissionedOptionsAmount > 0 && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">Selected Options:</span>
                   <span className="text-gray-900">

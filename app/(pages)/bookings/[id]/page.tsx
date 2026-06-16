@@ -4998,6 +4998,7 @@ export default function BookingDetailPage() {
                     id="customer-reschedule-date"
                     projectId={booking?.project?._id}
                     excludeBookingId={booking?._id}
+                    subprojectIndex={booking?.selectedSubprojectIndex}
                     value={rescheduleDate}
                     onChange={setRescheduleDate}
                     ariaLabel="New start date"
