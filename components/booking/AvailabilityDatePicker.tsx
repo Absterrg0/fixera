@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
-import { format, isSameDay, parseISO, startOfDay, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from 'date-fns'
+import { format, isSameDay, parseISO, startOfDay, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isValid } from 'date-fns'
 import { formatInTimeZone } from 'date-fns-tz'
 
 interface BlockedRange {
@@ -117,7 +117,12 @@ export default function AvailabilityDatePicker({
             }))
           )
           if (data.earliestBookableDate) {
-            setApiEarliestDate(startOfDay(parseISO(data.earliestBookableDate)))
+            const parsed = parseISO(data.earliestBookableDate)
+            if (isValid(parsed)) {
+              setApiEarliestDate(startOfDay(parsed))
+            } else {
+              setApiEarliestDate(null)
+            }
           } else {
             setApiEarliestDate(null)
           }
@@ -155,7 +160,16 @@ export default function AvailabilityDatePicker({
   }, [open])
 
   const today = startOfDay(new Date())
-  const earliestDate = startOfDay(minDate || apiEarliestDate || today)
+  const earliestDate = useMemo(() => {
+    let maxDate = today
+    if (apiEarliestDate && apiEarliestDate.getTime() > maxDate.getTime()) {
+      maxDate = apiEarliestDate
+    }
+    if (minDate && minDate.getTime() > maxDate.getTime()) {
+      maxDate = minDate
+    }
+    return startOfDay(maxDate)
+  }, [minDate, apiEarliestDate, today])
 
   const normalizedRanges = useMemo(() => {
     return blockedRanges
