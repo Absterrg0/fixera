@@ -856,6 +856,7 @@ export default function BookingTimelineBoard({
                   id="timeline-reschedule-date"
                   projectId={activeBooking?.project?._id}
                   excludeBookingId={activeBooking?._id}
+                  subprojectIndex={activeBooking?.selectedSubprojectIndex}
                   value={rescheduleDate}
                   onChange={setRescheduleDate}
                 />

@@ -293,6 +293,15 @@ export default function PlanningDialog({ open, bookingId, onClose, onUpdated }: 
                             key={dayKey}
                             className={`h-8 w-9 border-b border-r border-slate-200 p-0 text-center ${cls} ${locked ? "cursor-not-allowed" : "cursor-pointer"}`}
                             onClick={() => toggleCell(resource._id, dayKey)}
+                            onKeyDown={locked ? undefined : (e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault()
+                                toggleCell(resource._id, dayKey)
+                              }
+                            }}
+                            role={locked ? undefined : "button"}
+                            tabIndex={locked ? undefined : 0}
+                            aria-label={`${resource.name || resource._id} — ${dayKey}${locked ? " (unavailable)" : ""}`}
                             title={`${resource.name || resource._id} — ${dayKey}${locked ? " (unavailable)" : ""}`}
                           >
                             {state === "blocked" ? <Lock className="mx-auto h-3 w-3 text-sky-700" /> : null}

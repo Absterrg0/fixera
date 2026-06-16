@@ -57,6 +57,11 @@ function AdminChatInner() {
   const [closing, setClosing] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement | null>(null)
+  const selectedIdRef = useRef<string>(selectedId)
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId
+  }, [selectedId])
 
   useEffect(() => {
     if (!loading && (!user || user.role !== 'admin')) {
@@ -65,7 +70,7 @@ function AdminChatInner() {
   }, [user, loading, router])
 
   useEffect(() => {
-    if (queryConversationId) setSelectedId(queryConversationId)
+    setSelectedId(queryConversationId)
   }, [queryConversationId])
 
   const loadConversations = useCallback(async (silent = false) => {
@@ -73,9 +78,10 @@ function AdminChatInner() {
     try {
       const res = await authFetch(`${BACKEND}/api/admin/conversations`)
       const json = await res.json()
-      if (json?.success) {
-        setConversations(Array.isArray(json.data?.items) ? json.data.items : [])
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.msg || "Failed to load conversations")
       }
+      setConversations(Array.isArray(json.data?.items) ? json.data.items : [])
     } catch {
       if (!silent) toast.error("Failed to load conversations")
     } finally {
@@ -99,6 +105,7 @@ function AdminChatInner() {
       ])
       const convJson = await convRes.json()
       const msgJson = await msgRes.json()
+      if (conversationId !== selectedIdRef.current) return
       if (convJson?.success) setConversation(convJson.data)
       if (msgJson?.success) {
         const items = Array.isArray(msgJson.data?.items) ? msgJson.data.items : []
