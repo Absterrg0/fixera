@@ -545,7 +545,10 @@ export default function BookingTimelineBoard({
   const renderActionButtons = (booking: TimelineBooking) => {
     const btns: React.ReactNode[] = []
     const busy = submittingBookingId === booking._id
-    const isDaysMode = resolveIsDaysMode(booking)
+    const canShowPlanning =
+      viewerRole === "professional" &&
+      (booking.status === "booked" || booking.status === "in_progress") &&
+      resolveIsDaysMode(booking)
 
     if (viewerRole === "professional" && booking.status === "booked") {
       btns.push(
@@ -556,7 +559,7 @@ export default function BookingTimelineBoard({
           <RefreshCw className="mr-1 h-3 w-3" />Reschedule
         </Button>
       )
-      if (isDaysMode) {
+      if (canShowPlanning) {
         btns.push(
           <Button key="planning" variant="outline" size="sm" className="h-6 text-[10px] px-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50" onClick={() => setPlanningBookingId(booking._id)}>
             <CalendarRange className="mr-1 h-3 w-3" />Planning
@@ -593,7 +596,7 @@ export default function BookingTimelineBoard({
           </Button>
         )
       }
-      if (isDaysMode) {
+      if (canShowPlanning) {
         btns.push(
           <Button key="planning" variant="outline" size="sm" className="h-6 text-[10px] px-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50" onClick={() => setPlanningBookingId(booking._id)}>
             <CalendarRange className="mr-1 h-3 w-3" />Planning
@@ -615,6 +618,7 @@ export default function BookingTimelineBoard({
         )
       }
     }
+
 
     if (viewerRole === "customer" && booking.status === "rescheduling_requested") {
       btns.push(
