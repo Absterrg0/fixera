@@ -528,6 +528,7 @@ export default function ProfilePage() {
           scheduledBufferStartDate?: string | Date | null
           scheduledBufferEndDate?: string | Date | null
           status?: string
+          resourcePlan?: { resourceId?: string | { _id?: string }; days?: (string | Date)[] }[]
           location?: {
             address?: string
             city?: string
@@ -535,6 +536,9 @@ export default function ProfilePage() {
             postalCode?: string
           }
         }
+
+        const currentUserId = user?._id ? String(user._id) : ''
+        const DAY_MS = 24 * 60 * 60 * 1000
 
         const parseDate = (value?: string | Date | null) => {
           if (!value) return null
@@ -558,6 +562,63 @@ export default function ProfilePage() {
           const customerName = booking.customer && typeof booking.customer === 'object'
             ? booking.customer.name
             : undefined
+
+          const plan = Array.isArray(booking.resourcePlan) ? booking.resourcePlan : []
+          const hasPlan = plan.some((entry) => Array.isArray(entry?.days) && entry.days.length > 0)
+
+          if (hasPlan) {
+            const entry = plan.find(
+              (e) => String((typeof e?.resourceId === 'object' ? e?.resourceId?._id : e?.resourceId) || '') === currentUserId
+            )
+            const plannedDays = entry && Array.isArray(entry.days) ? entry.days : []
+
+            if (plannedDays.length === 0) {
+              return
+            }
+
+            plannedDays.forEach((day, dayIndex) => {
+              const dayStart = parseDate(day)
+              if (!dayStart) return
+              const dayStartUtc = new Date(Date.UTC(dayStart.getUTCFullYear(), dayStart.getUTCMonth(), dayStart.getUTCDate(), 0, 0, 0, 0))
+              events.push({
+                id: `booking-${booking._id}-${dayIndex}`,
+                type: 'booking',
+                title: 'Booking',
+                start: dayStartUtc,
+                end: new Date(dayStartUtc.getTime() + DAY_MS),
+                meta: {
+                  bookingId: booking._id,
+                  bookingNumber: booking.bookingNumber,
+                  customerName,
+                  location: booking.location
+                },
+                readOnly: true
+              })
+            })
+
+            if (bufferStart && bufferEnd && bufferEnd > bufferStart) {
+              const bufferIntervalStart =
+                executionEnd && bufferStart < executionEnd ? executionEnd : bufferStart
+              if (bufferIntervalStart < bufferEnd) {
+                events.push({
+                  id: `buffer-${booking._id}`,
+                  type: 'booking-buffer',
+                  title: 'Buffer',
+                  start: bufferIntervalStart,
+                  end: bufferEnd,
+                  meta: {
+                    bookingId: booking._id,
+                    bookingNumber: booking.bookingNumber,
+                    customerName,
+                    location: booking.location
+                  },
+                  readOnly: true
+                })
+              }
+            }
+
+            return
+          }
 
           if (scheduledStart && executionEnd && executionEnd > scheduledStart) {
             events.push({
@@ -613,7 +674,7 @@ export default function ProfilePage() {
     return () => {
       abortController.abort()
     }
-  }, [loading, isAuthenticated, user?.role])
+  }, [loading, isAuthenticated, user?.role, user?._id])
 
   useEffect(() => {
     if (loading || !isAuthenticated || user?.role !== 'professional') {

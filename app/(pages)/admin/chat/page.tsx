@@ -56,7 +56,8 @@ function AdminChatInner() {
   const [sending, setSending] = useState(false)
   const [closing, setClosing] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const endRef = useRef<HTMLDivElement | null>(null)
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null)
+  const lastMessageIdRef = useRef<string | null>(null)
   const selectedIdRef = useRef<string>(selectedId)
 
   useEffect(() => {
@@ -144,7 +145,20 @@ function AdminChatInner() {
   useChatPolling(pollConversations, 15000, user?.role === 'admin', [])
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" })
+    const container = messagesContainerRef.current
+    if (!container) return
+    if (messages.length === 0) {
+      lastMessageIdRef.current = null
+      return
+    }
+    const lastId = messages[messages.length - 1]._id
+    if (lastId === lastMessageIdRef.current) return
+    const isFirstLoad = lastMessageIdRef.current === null
+    const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120
+    lastMessageIdRef.current = lastId
+    if (isFirstLoad || nearBottom) {
+      container.scrollTop = container.scrollHeight
+    }
   }, [messages])
 
   const selectConversation = (id: string) => {
@@ -299,7 +313,7 @@ function AdminChatInner() {
                       </Button>
                     )}
                   </div>
-                  <div className="h-[55vh] overflow-y-auto p-4 space-y-3">
+                  <div ref={messagesContainerRef} className="h-[55vh] overflow-y-auto p-4 space-y-3">
                     {isLoading ? (
                       <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>
                     ) : messages.length === 0 ? (
@@ -319,7 +333,6 @@ function AdminChatInner() {
                         )
                       })
                     )}
-                    <div ref={endRef} />
                   </div>
                   <div className="border-t p-3">
                     {isClosed ? (

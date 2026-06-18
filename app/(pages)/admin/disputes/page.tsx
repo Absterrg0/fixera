@@ -939,7 +939,8 @@ export default function AdminDisputesPage() {
                     <p><span className="text-gray-500">Request date:</span> {formatDateOnly(selectedDispute.dispute?.raisedAt)}</p>
                     <p><span className="text-gray-500">Start date:</span> {formatDateOnly(selectedDispute.actualStartDate || selectedDispute.scheduledStartDate)}</p>
                     <p><span className="text-gray-500">Booking status:</span> {selectedDispute.status}</p>
-                    <p><span className="text-gray-500">Cancel reason:</span> {selectedDispute.cancellation?.reason || selectedDispute.dispute?.description || '—'}</p>
+                    <p><span className="text-gray-500">Cancel reason:</span> {selectedDispute.cancellation?.reason || '—'}</p>
+                    <p className="whitespace-pre-wrap"><span className="text-gray-500">Explanation:</span> {selectedDispute.dispute?.description || '—'}</p>
                     {selectedDispute.dispute?.attachments && selectedDispute.dispute.attachments.length > 0 && (
                       <div className="pt-1 flex flex-wrap gap-2">
                         {selectedDispute.dispute.attachments.map((url) => (
@@ -1417,7 +1418,7 @@ export default function AdminDisputesPage() {
                   <p><span className="text-gray-500">Request date:</span> {formatDateOnly(externalDispute.dispute?.raisedAt)}</p>
                   <p><span className="text-gray-500">Start date:</span> {formatDateOnly(externalDispute.actualStartDate || externalDispute.scheduledStartDate)}</p>
                   <p><span className="text-gray-500">Booking status:</span> {externalDispute.status || '—'}</p>
-                  <p><span className="text-gray-500">Cancel reason:</span> {externalDispute.cancellation?.reason || externalDispute.dispute?.description || '—'}</p>
+                  <p><span className="text-gray-500">Cancel reason:</span> {externalDispute.cancellation?.reason || '—'}</p>
                   <p className="whitespace-pre-wrap"><span className="text-gray-500">Explanation:</span> {externalDispute.dispute?.description || '—'}</p>
                   {externalDispute.dispute?.attachments && externalDispute.dispute.attachments.length > 0 && (
                     <div className="pt-1">

@@ -19,6 +19,9 @@ export const useUnreadCount = () => {
     try {
       const data = await fetchConversations({ page: 1, limit: 50 });
       const total = (data.conversations || []).reduce((sum, c) => {
+        if (c.type === "support") {
+          return sum + (c.customerUnreadCount || 0);
+        }
         if (userRole === "professional") {
           return sum + (c.professionalUnreadCount || 0);
         }
