@@ -12,6 +12,7 @@ import EmployeeManagement from "@/components/TeamManagement"
 import PasswordChange from "@/components/PasswordChange"
 import PrivacyAndData from "@/components/PrivacyAndData"
 import EmployeeAvailability from "@/components/EmployeeAvailability"
+import NotificationPreferences from "@/components/notifications/NotificationPreferences"
 import WeeklyAvailabilityCalendar, { CalendarEvent } from "@/components/calendar/WeeklyAvailabilityCalendar"
 import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -1577,7 +1578,7 @@ export default function ProfilePage() {
 
         {isProfessional ? (
           <Tabs defaultValue="profile" className="w-full">
-            <TabsList className="grid w-full grid-cols-8">
+            <TabsList className="grid w-full grid-cols-9">
               <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="business">Business Info</TabsTrigger>
               <TabsTrigger value="documents">Documents</TabsTrigger>
@@ -1586,6 +1587,7 @@ export default function ProfilePage() {
               <TabsTrigger value="personal-availability">Personal Availability</TabsTrigger>
               <TabsTrigger value="company-availability">Company Availability</TabsTrigger>
               <TabsTrigger value="security">Security</TabsTrigger>
+              <TabsTrigger value="notifications">Notifications</TabsTrigger>
             </TabsList>
 
             <TabsContent value="profile" className="space-y-6">
@@ -2670,9 +2672,10 @@ export default function ProfilePage() {
         ) : (
           // Non-professional users (customers, employees, etc.)
           <Tabs defaultValue="profile" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="security">Security</TabsTrigger>
+              <TabsTrigger value="notifications">Notifications</TabsTrigger>
               {user?.role === 'employee' && (
                 <TabsTrigger value="availability">Availability</TabsTrigger>
               )}
@@ -3026,6 +3029,15 @@ export default function ProfilePage() {
             <TabsContent value="security" className="space-y-6">
               <PasswordChange />
               <PrivacyAndData />
+            </TabsContent>
+
+            {/* Notifications Tab */}
+            <TabsContent value="notifications" className="space-y-6">
+              <Card>
+                <CardContent className="pt-6">
+                  <NotificationPreferences />
+                </CardContent>
+              </Card>
             </TabsContent>
 
             {
