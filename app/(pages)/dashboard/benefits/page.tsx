@@ -8,10 +8,11 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Gift, Link2, Loader2, Sparkles, TrendingUp } from "lucide-react"
+import { Gift, Loader2, Sparkles, TrendingUp } from "lucide-react"
 import { getAuthToken } from "@/lib/utils"
 import BenefitsProgramCard from "@/components/dashboard/BenefitsProgramCard"
 import ReferralCard from "@/components/dashboard/ReferralCard"
+import BacklinkCard from "@/components/dashboard/BacklinkCard"
 
 type CustomerBenefitsResponse = {
   loyaltyStatus?: {
@@ -379,20 +380,12 @@ export default function BenefitsPage() {
                   </div>
                 </div>
               </div>
-              <div className="rounded-lg border bg-slate-50 p-4">
-                <p className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                  <Link2 className="h-4 w-4" />
-                  Backlinks
-                </p>
-                <p className="mt-3 text-sm text-slate-600">
-                  Backlink rewards are reserved here and can be surfaced once backend tracking is enabled.
-                </p>
-              </div>
             </CardContent>
           </Card>
         </div>
 
         <ReferralCard referralData={referralData} />
+        <BacklinkCard />
       </div>
     </div>
   )
