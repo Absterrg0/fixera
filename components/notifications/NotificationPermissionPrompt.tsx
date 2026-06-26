@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Bell, X } from 'lucide-react';
 import { useFCM } from '@/contexts/FCMProvider';
+import { CONSENT_EVENT, getConsent } from '@/lib/consent';
 
 const DISMISSED_KEY = 'fixera_push_prompt_dismissed';
 
@@ -21,9 +22,18 @@ const NotificationPermissionPrompt: React.FC = () => {
   const { permissionGranted, requestPermission } = useFCM();
   const [show, setShow] = useState(false);
   const [requesting, setRequesting] = useState(false);
+  const [consentResolved, setConsentResolved] = useState(true);
+
+  useEffect(() => {
+    const refreshConsent = () => setConsentResolved(getConsent() !== null);
+    refreshConsent();
+    window.addEventListener(CONSENT_EVENT, refreshConsent);
+    return () => window.removeEventListener(CONSENT_EVENT, refreshConsent);
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (!consentResolved) return;
     if (!('Notification' in window)) return;
     if (Notification.permission !== 'default') return; // already granted or denied
     if (permissionGranted) return;
@@ -35,7 +45,7 @@ const NotificationPermissionPrompt: React.FC = () => {
     // with the page rendering.
     const timer = setTimeout(() => setShow(true), 4000);
     return () => clearTimeout(timer);
-  }, [permissionGranted]);
+  }, [permissionGranted, consentResolved]);
 
   const handleAllow = async () => {
     setRequesting(true);
@@ -55,7 +65,7 @@ const NotificationPermissionPrompt: React.FC = () => {
       role="dialog"
       aria-label="Enable push notifications"
       className={`
-        fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999]
+        fixed bottom-6 left-1/2 -translate-x-1/2 z-40
         flex items-center gap-4
         max-w-md w-[calc(100%-2rem)]
         rounded-2xl shadow-2xl

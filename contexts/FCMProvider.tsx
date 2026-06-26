@@ -1,9 +1,9 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
-import { getToken, onMessage } from 'firebase/messaging';
+import { getToken, onMessage, deleteToken } from 'firebase/messaging';
 import { toast } from 'sonner';
-import { getFirebaseMessaging } from '@/lib/firebase';
+import { firebaseConfig, getFirebaseMessaging } from '@/lib/firebase';
 import { getAuthToken } from '@/lib/utils';
 
 // ------------------------------------------------------------------
@@ -38,37 +38,59 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
 const VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY ?? '';
 
 async function saveTokenToServer(token: string): Promise<void> {
-  try {
-    const authToken = getAuthToken();
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+  const authToken = getAuthToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
-    await fetch(`${BACKEND_URL}/api/user/fcm/token`, {
-      method: 'POST',
-      credentials: 'include',
-      headers,
-      body: JSON.stringify({ token }),
-    });
-  } catch {
-    // Non-critical — swallow silently
+  const response = await fetch(`${BACKEND_URL}/api/user/fcm/token`, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify({ token }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`FCM token registration failed: ${response.status}`);
   }
 }
 
 async function removeTokenFromServer(token: string): Promise<void> {
-  try {
-    const authToken = getAuthToken();
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+  const authToken = getAuthToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
-    await fetch(`${BACKEND_URL}/api/user/fcm/token`, {
-      method: 'DELETE',
-      credentials: 'include',
-      headers,
-      body: JSON.stringify({ token }),
-    });
-  } catch {
-    // Non-critical
+  const response = await fetch(`${BACKEND_URL}/api/user/fcm/token`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify({ token }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`FCM token removal failed: ${response.status}`);
   }
+}
+
+function injectFirebaseConfigIntoSw(worker: ServiceWorker | null): void {
+  if (!worker || !firebaseConfig.apiKey) return;
+  worker.postMessage({ type: 'FIREBASE_CONFIG', config: firebaseConfig });
+}
+
+async function waitForActiveWorker(reg: ServiceWorkerRegistration): Promise<ServiceWorker | null> {
+  if (reg.active) return reg.active;
+
+  const worker = reg.installing ?? reg.waiting;
+  if (!worker) return null;
+
+  return new Promise((resolve) => {
+    const onStateChange = () => {
+      if (worker.state === 'activated') {
+        worker.removeEventListener('statechange', onStateChange);
+        resolve(reg.active);
+      }
+    };
+    worker.addEventListener('statechange', onStateChange);
+  });
 }
 
 async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
@@ -77,6 +99,8 @@ async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null
     const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
       scope: '/',
     });
+    const active = await waitForActiveWorker(reg);
+    injectFirebaseConfigIntoSw(active);
     return reg;
   } catch (err) {
     console.warn('[FCM] Service worker registration failed:', err);
@@ -115,9 +139,9 @@ export const FCMProvider: React.FC<FCMProviderProps> = ({ isAuthenticated, child
       });
 
       if (token && token !== currentToken.current) {
+        await saveTokenToServer(token);
         currentToken.current = token;
         setFcmToken(token);
-        await saveTokenToServer(token);
       }
     } catch (err) {
       console.warn('[FCM] Failed to obtain token:', err);
@@ -210,11 +234,31 @@ export const FCMProvider: React.FC<FCMProviderProps> = ({ isAuthenticated, child
   // Remove token when user logs out
   useEffect(() => {
     if (!isAuthenticated && currentToken.current) {
-      removeTokenFromServer(currentToken.current);
-      currentToken.current = null;
-      setFcmToken(null);
-      setPermissionGranted(false);
-      initialised.current = false;
+      const token = currentToken.current;
+
+      const cleanup = async () => {
+        try {
+          await removeTokenFromServer(token);
+        } catch (err) {
+          console.warn('[FCM] Failed to remove token from server:', err);
+        }
+
+        const messaging = getFirebaseMessaging();
+        if (messaging) {
+          try {
+            await deleteToken(messaging);
+          } catch (err) {
+            console.warn('[FCM] Failed to delete browser token:', err);
+          }
+        }
+
+        currentToken.current = null;
+        setFcmToken(null);
+        setPermissionGranted(false);
+        initialised.current = false;
+      };
+
+      void cleanup();
     }
   }, [isAuthenticated]);
 

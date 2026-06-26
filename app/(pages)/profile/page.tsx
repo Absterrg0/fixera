@@ -14,7 +14,7 @@ import PrivacyAndData from "@/components/PrivacyAndData"
 import EmployeeAvailability from "@/components/EmployeeAvailability"
 import NotificationPreferences from "@/components/notifications/NotificationPreferences"
 import WeeklyAvailabilityCalendar, { CalendarEvent } from "@/components/calendar/WeeklyAvailabilityCalendar"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -78,6 +78,8 @@ interface StripeAccountStatus {
 export default function ProfilePage() {
   const { user, isAuthenticated, loading, checkAuth } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const [profileTab, setProfileTab] = useState('profile')
   const [vatNumber, setVatNumber] = useState('')
   const [vatValidating, setVatValidating] = useState(false)
   const [vatSaving, setVatSaving] = useState(false)
@@ -1506,6 +1508,23 @@ export default function ProfilePage() {
     stripePayoutsEnabled
   )
 
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (!tab) return
+
+    const professionalTabs = new Set([
+      'profile', 'business', 'documents', 'payments', 'employees',
+      'personal-availability', 'company-availability', 'security', 'notifications',
+    ])
+    const customerTabs = new Set(['profile', 'security', 'notifications'])
+
+    if (isProfessional && professionalTabs.has(tab)) {
+      setProfileTab(tab)
+    } else if (!isProfessional && (customerTabs.has(tab) || (tab === 'availability' && user?.role === 'employee'))) {
+      setProfileTab(tab)
+    }
+  }, [searchParams, isProfessional, user?.role])
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="max-w-6xl mx-auto pt-20">
@@ -1577,7 +1596,7 @@ export default function ProfilePage() {
         </div>
 
         {isProfessional ? (
-          <Tabs defaultValue="profile" className="w-full">
+          <Tabs value={profileTab} onValueChange={setProfileTab} className="w-full">
             <TabsList className="grid w-full grid-cols-9">
               <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="business">Business Info</TabsTrigger>
@@ -2668,10 +2687,19 @@ export default function ProfilePage() {
               <PasswordChange />
               <PrivacyAndData />
             </TabsContent >
+
+            {/* Notifications Tab */}
+            <TabsContent value="notifications" className="space-y-6">
+              <Card>
+                <CardContent className="pt-6">
+                  <NotificationPreferences />
+                </CardContent>
+              </Card>
+            </TabsContent>
           </Tabs >
         ) : (
           // Non-professional users (customers, employees, etc.)
-          <Tabs defaultValue="profile" className="w-full">
+          <Tabs value={profileTab} onValueChange={setProfileTab} className="w-full">
             <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="security">Security</TabsTrigger>

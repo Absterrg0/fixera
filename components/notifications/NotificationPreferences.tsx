@@ -102,13 +102,16 @@ interface ToggleProps {
   onChange: (val: boolean) => void;
   disabled?: boolean;
   id: string;
+  'aria-label': string;
 }
 
-const Toggle: React.FC<ToggleProps> = ({ checked, onChange, disabled = false, id }) => (
+const Toggle: React.FC<ToggleProps> = ({ checked, onChange, disabled = false, id, 'aria-label': ariaLabel }) => (
   <button
+    type="button"
     id={id}
     role="switch"
     aria-checked={checked}
+    aria-label={ariaLabel}
     disabled={disabled}
     onClick={() => !disabled && onChange(!checked)}
     className={`
@@ -140,21 +143,26 @@ const NotificationPreferences: React.FC = () => {
   const [saving, setSaving] = useState<string | null>(null);
   const [pushBlocked, setPushBlocked] = useState(false);
 
-  useEffect(() => {
+  const syncPushBlocked = useCallback(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       setPushBlocked(Notification.permission === 'denied');
     }
+  }, []);
+
+  useEffect(() => {
+    syncPushBlocked();
 
     fetchPrefs()
       .then((data) => { if (data) setPrefs(data); })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [syncPushBlocked]);
 
   const handleToggle = useCallback(
     async (type: NotificationType, channel: Channel, enabled: boolean) => {
       if (channel === 'push' && !permissionGranted && enabled) {
         const granted = await requestPermission();
+        syncPushBlocked();
         if (!granted) return;
       }
 
@@ -180,8 +188,13 @@ const NotificationPreferences: React.FC = () => {
         toast.error('Failed to save preference. Please try again.');
       }
     },
-    [permissionGranted, requestPermission],
+    [permissionGranted, requestPermission, syncPushBlocked],
   );
+
+  const handleEnablePush = useCallback(async () => {
+    await requestPermission();
+    syncPushBlocked();
+  }, [requestPermission, syncPushBlocked]);
 
   if (loading) {
     return (
@@ -230,7 +243,7 @@ const NotificationPreferences: React.FC = () => {
           </div>
           <button
             id="enable-push-from-prefs"
-            onClick={requestPermission}
+            onClick={handleEnablePush}
             className="shrink-0 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-4 py-2 transition-colors"
           >
             Enable Push
@@ -272,6 +285,7 @@ const NotificationPreferences: React.FC = () => {
                 <span className="text-xs text-gray-500 sm:hidden">Push:</span>
                 <Toggle
                   id={`toggle-push-${type}`}
+                  aria-label={`${label} push notifications`}
                   checked={pref.push}
                   onChange={(val) => handleToggle(type, 'push', val)}
                   disabled={saving === `${type}.push` || pushBlocked}
@@ -283,6 +297,7 @@ const NotificationPreferences: React.FC = () => {
                 <span className="text-xs text-gray-500 sm:hidden">Email:</span>
                 <Toggle
                   id={`toggle-email-${type}`}
+                  aria-label={`${label} email notifications`}
                   checked={pref.email}
                   onChange={(val) => handleToggle(type, 'email', val)}
                   disabled={saving === `${type}.email`}
