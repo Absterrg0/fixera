@@ -103,6 +103,7 @@ export interface ProjectDto {
   description: string
   category: string
   service: string
+  serviceConfigurationId?: string
   priceModel?: string
   timeMode?: "hours" | "days" | "mixed"
   preparationDuration?: {
@@ -173,6 +174,18 @@ export interface ProjectDto {
     isRequired: boolean
     professionalAttachments?: ProjectAttachmentRef[]
   }>
+  vatManagement?: {
+    enabled: boolean
+    rateRuleGroup?: string
+    reducedVatQuestions: Array<{
+      question: string
+      fieldName: string
+      answerType: "number" | "yes_no" | "checkboxes"
+      unit?: string
+      options?: string[]
+      isRequired: boolean
+    }>
+  }
   customerPresence?: string
   termsConditions?: Array<{
     name: string

@@ -64,6 +64,40 @@ interface PricingOption {
   unit?: string
 }
 
+interface VatQuestion {
+  question: string
+  fieldName: string
+  answerType: 'number' | 'yes_no' | 'checkboxes'
+  unit?: string
+  options?: string[]
+  isRequired: boolean
+}
+
+interface VatLogicCondition {
+  fieldName: string
+  operator: 'equals' | 'not_equals' | 'greater_than' | 'greater_than_or_equal' | 'less_than' | 'less_than_or_equal' | 'includes'
+  value: string | number | boolean
+  connector?: 'AND' | 'OR'
+}
+
+interface VatLogicRule {
+  country: string
+  standardRate: number
+  reducedRate: number
+  conditions: VatLogicCondition[]
+  action: 'reduced_rate' | 'rfq'
+  customText?: string
+  priority: number
+  isActive: boolean
+}
+
+interface VatManagement {
+  enabled: boolean
+  rateRuleGroup?: string
+  reducedVatQuestions: VatQuestion[]
+  logicRules: VatLogicRule[]
+}
+
 interface ServiceConfiguration {
   _id?: string
   category: string
@@ -79,6 +113,7 @@ interface ServiceConfiguration {
   professionalInputFields: DynamicField[]
   extraOptions: ExtraOption[]
   conditionsAndWarnings: ConditionWarning[]
+  vatManagement?: VatManagement
   isActive: boolean
   country?: string
   activeCountries?: string[]
@@ -106,6 +141,12 @@ const EMPTY_FORM: ServiceConfiguration = {
   professionalInputFields: [],
   extraOptions: [],
   conditionsAndWarnings: [],
+  vatManagement: {
+    enabled: false,
+    rateRuleGroup: '',
+    reducedVatQuestions: [],
+    logicRules: [],
+  },
   isActive: true,
   activeCountries: ['BE']
 }
@@ -433,6 +474,30 @@ export default function ServiceConfigurationManagement() {
       }
     }
 
+    const vat = ensureVatManagement(formData.vatManagement)
+    if (vat.enabled) {
+      for (const question of vat.reducedVatQuestions) {
+        if (!question.question.trim() || !question.fieldName.trim()) {
+          toast.error('Each VAT question needs a question and field name')
+          return
+        }
+        if (question.answerType === 'checkboxes' && (!question.options || question.options.length === 0)) {
+          toast.error(`VAT question "${question.question}" needs checkbox options`)
+          return
+        }
+      }
+      for (const rule of vat.logicRules) {
+        if (!rule.country.trim()) {
+          toast.error('Each VAT logic rule needs a country')
+          return
+        }
+        if (!Number.isFinite(Number(rule.standardRate)) || !Number.isFinite(Number(rule.reducedRate))) {
+          toast.error('Each VAT logic rule needs standard and reduced VAT rates')
+          return
+        }
+      }
+    }
+
     if (editingId) {
       updateService(editingId)
     } else {
@@ -570,6 +635,122 @@ export default function ServiceConfigurationManagement() {
         i === index ? ({ ...cw, [field]: value } as ConditionWarning) : cw
       )
     }))
+  }
+
+  const ensureVatManagement = (vat?: VatManagement): VatManagement => ({
+    enabled: vat?.enabled ?? false,
+    rateRuleGroup: vat?.rateRuleGroup || '',
+    reducedVatQuestions: vat?.reducedVatQuestions || [],
+    logicRules: vat?.logicRules || [],
+  })
+
+  const updateVatManagement = (patch: Partial<VatManagement>) => {
+    setFormData(prev => ({
+      ...prev,
+      vatManagement: { ...ensureVatManagement(prev.vatManagement), ...patch }
+    }))
+  }
+
+  const addVatQuestion = () => {
+    const vat = ensureVatManagement(formData.vatManagement)
+    updateVatManagement({
+      reducedVatQuestions: [
+        ...vat.reducedVatQuestions,
+        { question: '', fieldName: '', answerType: 'yes_no', unit: '', options: [], isRequired: true }
+      ]
+    })
+  }
+
+  const updateVatQuestion = (index: number, patch: Partial<VatQuestion>) => {
+    const vat = ensureVatManagement(formData.vatManagement)
+    updateVatManagement({
+      reducedVatQuestions: vat.reducedVatQuestions.map((question, i) =>
+        i === index ? { ...question, ...patch } : question
+      )
+    })
+  }
+
+  const removeVatQuestion = (index: number) => {
+    const vat = ensureVatManagement(formData.vatManagement)
+    updateVatManagement({
+      reducedVatQuestions: vat.reducedVatQuestions.filter((_, i) => i !== index)
+    })
+  }
+
+  const addVatLogicRule = () => {
+    const vat = ensureVatManagement(formData.vatManagement)
+    updateVatManagement({
+      logicRules: [
+        ...vat.logicRules,
+        {
+          country: 'BE',
+          standardRate: 21,
+          reducedRate: 6,
+          conditions: [],
+          action: 'reduced_rate',
+          customText: '',
+          priority: vat.logicRules.length,
+          isActive: true,
+        }
+      ]
+    })
+  }
+
+  const updateVatLogicRule = (index: number, patch: Partial<VatLogicRule>) => {
+    const vat = ensureVatManagement(formData.vatManagement)
+    updateVatManagement({
+      logicRules: vat.logicRules.map((rule, i) => i === index ? { ...rule, ...patch } : rule)
+    })
+  }
+
+  const removeVatLogicRule = (index: number) => {
+    const vat = ensureVatManagement(formData.vatManagement)
+    updateVatManagement({ logicRules: vat.logicRules.filter((_, i) => i !== index) })
+  }
+
+  const addVatCondition = (ruleIndex: number) => {
+    const vat = ensureVatManagement(formData.vatManagement)
+    const fieldName = vat.reducedVatQuestions[0]?.fieldName || ''
+    updateVatManagement({
+      logicRules: vat.logicRules.map((rule, i) =>
+        i === ruleIndex
+          ? {
+              ...rule,
+              conditions: [
+                ...rule.conditions,
+                { fieldName, operator: 'equals', value: true, connector: rule.conditions.length === 0 ? 'AND' : 'AND' }
+              ]
+            }
+          : rule
+      )
+    })
+  }
+
+  const updateVatCondition = (ruleIndex: number, conditionIndex: number, patch: Partial<VatLogicCondition>) => {
+    const vat = ensureVatManagement(formData.vatManagement)
+    updateVatManagement({
+      logicRules: vat.logicRules.map((rule, i) =>
+        i === ruleIndex
+          ? {
+              ...rule,
+              conditions: rule.conditions.map((condition, ci) =>
+                ci === conditionIndex ? { ...condition, ...patch } : condition
+              )
+            }
+          : rule
+      )
+    })
+  }
+
+  const removeVatCondition = (ruleIndex: number, conditionIndex: number) => {
+    const vat = ensureVatManagement(formData.vatManagement)
+    updateVatManagement({
+      logicRules: vat.logicRules.map((rule, i) =>
+        i === ruleIndex
+          ? { ...rule, conditions: rule.conditions.filter((_, ci) => ci !== conditionIndex) }
+          : rule
+      )
+    })
   }
 
   useEffect(() => {
@@ -1141,6 +1322,173 @@ export default function ServiceConfigurationManagement() {
                   <p className="text-sm text-muted-foreground">No conditions or warnings added yet</p>
                 )}
               </div>
+            </div>
+
+            {/* VAT Management */}
+            <div className="space-y-4 p-4 rounded-lg border-2 border-transparent bg-white relative before:absolute before:inset-0 before:rounded-lg before:p-[1px] before:bg-gradient-to-br before:from-emerald-200 before:to-cyan-200 before:-z-10">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-lg">VAT management</h3>
+                <Switch
+                  id="vat-enabled"
+                  checked={!!formData.vatManagement?.enabled}
+                  onCheckedChange={(checked) => updateVatManagement({ enabled: Boolean(checked) })}
+                />
+              </div>
+
+              {formData.vatManagement?.enabled && (
+                <div className="space-y-5">
+                  <div className="space-y-2">
+                    <Label>Rate rule group</Label>
+                    <Input
+                      value={formData.vatManagement.rateRuleGroup || ''}
+                      onChange={(e) => updateVatManagement({ rateRuleGroup: e.target.value })}
+                      placeholder="e.g., building_work, solar, renovation_category"
+                    />
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label>Reduced VAT questions</Label>
+                      <Button type="button" size="sm" variant="outline" onClick={addVatQuestion}>
+                        <Plus className="h-4 w-4 mr-1" /> Add Question
+                      </Button>
+                    </div>
+                    {(formData.vatManagement.reducedVatQuestions || []).map((question, index) => (
+                      <div key={index} className="p-3 border rounded-lg bg-gray-50 space-y-2">
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_180px_150px_100px_40px] gap-2">
+                          <Input
+                            value={question.question}
+                            onChange={(e) => updateVatQuestion(index, { question: e.target.value })}
+                            placeholder="Question shown in booking wizard"
+                            className="bg-white"
+                          />
+                          <Input
+                            value={question.fieldName}
+                            onChange={(e) => updateVatQuestion(index, { fieldName: e.target.value })}
+                            placeholder="field_name"
+                            className="bg-white"
+                          />
+                          <select
+                            className="border rounded-md px-3 py-2 bg-white text-sm"
+                            value={question.answerType}
+                            onChange={(e) => updateVatQuestion(index, { answerType: e.target.value as VatQuestion['answerType'] })}
+                          >
+                            <option value="yes_no">Yes/No</option>
+                            <option value="number">Number</option>
+                            <option value="checkboxes">Checkboxes</option>
+                          </select>
+                          <Input
+                            value={question.unit || ''}
+                            onChange={(e) => updateVatQuestion(index, { unit: e.target.value })}
+                            placeholder="Unit"
+                            disabled={question.answerType !== 'number'}
+                            className="bg-white"
+                          />
+                          <Button type="button" variant="ghost" size="icon" onClick={() => removeVatQuestion(index)}>
+                            <X className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </div>
+                        {question.answerType === 'checkboxes' && (
+                          <Input
+                            value={(question.options || []).join(', ')}
+                            onChange={(e) => updateVatQuestion(index, { options: e.target.value.split(',').map(v => v.trim()).filter(Boolean) })}
+                            placeholder="Checkbox options, comma separated"
+                            className="bg-white"
+                          />
+                        )}
+                      </div>
+                    ))}
+                    {(!formData.vatManagement.reducedVatQuestions || formData.vatManagement.reducedVatQuestions.length === 0) && (
+                      <p className="text-sm text-muted-foreground">No reduced VAT questions added yet</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label>Logic determination</Label>
+                      <Button type="button" size="sm" variant="outline" onClick={addVatLogicRule}>
+                        <Plus className="h-4 w-4 mr-1" /> Add Rule
+                      </Button>
+                    </div>
+                    {(formData.vatManagement.logicRules || []).map((rule, ruleIndex) => (
+                      <div key={ruleIndex} className="p-3 border rounded-lg bg-gray-50 space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-[100px_120px_120px_150px_90px_40px] gap-2">
+                          <Input value={rule.country} onChange={(e) => updateVatLogicRule(ruleIndex, { country: e.target.value.toUpperCase() })} placeholder="BE" className="bg-white" />
+                          <Input type="number" step={0.1} value={rule.standardRate} onChange={(e) => updateVatLogicRule(ruleIndex, { standardRate: parseFloat(e.target.value) || 0 })} placeholder="Standard %" className="bg-white" />
+                          <Input type="number" step={0.1} value={rule.reducedRate} onChange={(e) => updateVatLogicRule(ruleIndex, { reducedRate: parseFloat(e.target.value) || 0 })} placeholder="Reduced %" className="bg-white" />
+                          <select className="border rounded-md px-3 py-2 bg-white text-sm" value={rule.action} onChange={(e) => updateVatLogicRule(ruleIndex, { action: e.target.value as VatLogicRule['action'] })}>
+                            <option value="reduced_rate">Reduced rate</option>
+                            <option value="rfq">RFQ</option>
+                          </select>
+                          <Input type="number" value={rule.priority} onChange={(e) => updateVatLogicRule(ruleIndex, { priority: parseInt(e.target.value, 10) || 0 })} placeholder="Priority" className="bg-white" />
+                          <Button type="button" variant="ghost" size="icon" onClick={() => removeVatLogicRule(ruleIndex)}>
+                            <X className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </div>
+
+                        <Input
+                          value={rule.customText || ''}
+                          onChange={(e) => updateVatLogicRule(ruleIndex, { customText: e.target.value })}
+                          placeholder="Custom text shown when this logic is met"
+                          className="bg-white"
+                        />
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">IF conditions</span>
+                            <Button type="button" size="sm" variant="outline" onClick={() => addVatCondition(ruleIndex)}>
+                              <Plus className="h-4 w-4 mr-1" /> Add Condition
+                            </Button>
+                          </div>
+                          {rule.conditions.map((condition, conditionIndex) => (
+                            <div key={conditionIndex} className="grid grid-cols-1 md:grid-cols-[80px_1fr_180px_1fr_40px] gap-2">
+                              <select
+                                className="border rounded-md px-2 py-2 bg-white text-sm"
+                                value={condition.connector || 'AND'}
+                                onChange={(e) => updateVatCondition(ruleIndex, conditionIndex, { connector: e.target.value as 'AND' | 'OR' })}
+                                disabled={conditionIndex === 0}
+                              >
+                                <option value="AND">AND</option>
+                                <option value="OR">OR</option>
+                              </select>
+                              <select
+                                className="border rounded-md px-3 py-2 bg-white text-sm"
+                                value={condition.fieldName}
+                                onChange={(e) => updateVatCondition(ruleIndex, conditionIndex, { fieldName: e.target.value })}
+                              >
+                                <option value="">Select field</option>
+                                {formData.vatManagement?.reducedVatQuestions.map(q => (
+                                  <option key={q.fieldName} value={q.fieldName}>{q.fieldName}</option>
+                                ))}
+                              </select>
+                              <select
+                                className="border rounded-md px-3 py-2 bg-white text-sm"
+                                value={condition.operator}
+                                onChange={(e) => updateVatCondition(ruleIndex, conditionIndex, { operator: e.target.value as VatLogicCondition['operator'] })}
+                              >
+                                <option value="equals">equals</option>
+                                <option value="not_equals">not equals</option>
+                                <option value="greater_than">greater than</option>
+                                <option value="greater_than_or_equal">greater/equal</option>
+                                <option value="less_than">less than</option>
+                                <option value="less_than_or_equal">less/equal</option>
+                                <option value="includes">includes</option>
+                              </select>
+                              <Input value={String(condition.value)} onChange={(e) => updateVatCondition(ruleIndex, conditionIndex, { value: e.target.value })} placeholder="Value" className="bg-white" />
+                              <Button type="button" variant="ghost" size="icon" onClick={() => removeVatCondition(ruleIndex, conditionIndex)}>
+                                <X className="h-4 w-4 text-red-600" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    {(!formData.vatManagement.logicRules || formData.vatManagement.logicRules.length === 0) && (
+                      <p className="text-sm text-muted-foreground">No VAT logic rules added yet</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Included Items */}

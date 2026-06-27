@@ -24,6 +24,14 @@ export interface QuoteMaterial {
   description?: string
 }
 
+export interface QuotationPricingLine {
+  description: string
+  price: number
+  vatRate: number
+  vatCountry?: string
+  vatLabel?: string
+}
+
 export interface QuoteVersion {
   version: number
   quotationNumber: string
@@ -32,6 +40,7 @@ export interface QuoteVersion {
   materialsIncluded: boolean
   materials?: QuoteMaterial[]
   description: string
+  pricingLines?: QuotationPricingLine[]
   totalAmount: number
   currency: string
   milestones?: QuotationMilestone[]
@@ -49,6 +58,7 @@ export interface QuotationWizardFormData {
   materialsIncluded: boolean | null
   materials: QuoteMaterial[]
   description: string
+  pricingLines: QuotationPricingLine[]
   totalAmount: number
   currency: string
   useMilestones: boolean

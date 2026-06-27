@@ -110,6 +110,11 @@ interface RFQAnswer {
   fieldType?: string;
 }
 
+interface VatAnswer {
+  fieldName: string;
+  value: string | number | boolean | string[];
+}
+
 interface BlockedRange {
   startDate: string;
   endDate: string;
@@ -298,6 +303,7 @@ export default function ProjectBookingForm({
   } | null>(null);
   const [loadingScheduleWindow, setLoadingScheduleWindow] = useState(false);
   const [rfqAnswers, setRFQAnswers] = useState<RFQAnswer[]>([]);
+  const [vatAnswers, setVatAnswers] = useState<Record<string, VatAnswer>>({});
   const [uploadingQuestionIndexes, setUploadingQuestionIndexes] = useState<Set<number>>(new Set());
   const [selectedExtraOptions, setSelectedExtraOptions] = useState<number[]>(
     []
@@ -1870,6 +1876,10 @@ export default function ProjectBookingForm({
     });
   };
 
+  const handleVatAnswerChange = (fieldName: string, value: VatAnswer['value']) => {
+    setVatAnswers(prev => ({ ...prev, [fieldName]: { fieldName, value } }));
+  };
+
   const handleRFQAttachmentUpload = async (index: number, file: File | null) => {
     if (!file) return;
 
@@ -2030,6 +2040,20 @@ export default function ProjectBookingForm({
       }
     }
 
+    if (currentStep === 3 && project.vatManagement?.enabled) {
+      for (const question of project.vatManagement.reducedVatQuestions || []) {
+        const answer = vatAnswers[question.fieldName]?.value;
+        const isMissing =
+          answer === undefined ||
+          answer === '' ||
+          (Array.isArray(answer) && answer.length === 0);
+        if (question.isRequired && isMissing) {
+          toast.error(`Please answer: ${question.question}`);
+          return false;
+        }
+      }
+    }
+
     if (currentStep === 4) {
       if (useProfileAddress) {
         if (!hasProfileAddress) {
@@ -2143,6 +2167,8 @@ export default function ProjectBookingForm({
       const bookingData = {
         bookingType: 'project',
         projectId: project._id,
+        serviceConfigurationId: project.serviceConfigurationId,
+        vatAnswers: Object.values(vatAnswers),
         preferredStartDate: isRfqPackage ? undefined : selectedDate,
         preferredStartTime:
           !isRfqPackage && projectMode === 'hours' && selectedTime
@@ -3803,6 +3829,87 @@ export default function ProjectBookingForm({
                   </div>
                 ))}
                 </>)}
+
+                {project.vatManagement?.enabled && project.vatManagement.reducedVatQuestions.length > 0 && (
+                  <div className='space-y-4 pt-4 border-t'>
+                    <div>
+                      <h2 className='text-xl font-semibold mb-2'>Reduced VAT questions</h2>
+                      <p className='text-gray-600 text-sm'>
+                        These answers determine whether a reduced VAT route can be applied.
+                      </p>
+                    </div>
+
+                    {project.vatManagement.reducedVatQuestions.map((question) => {
+                      const value = vatAnswers[question.fieldName]?.value;
+                      return (
+                        <div key={question.fieldName} className='space-y-2'>
+                          <Label htmlFor={`vat-${question.fieldName}`}>
+                            {question.question}
+                            {question.isRequired && <span className='text-red-500 ml-1'>*</span>}
+                          </Label>
+
+                          {question.answerType === 'number' && (
+                            <div className='flex gap-2'>
+                              <Input
+                                id={`vat-${question.fieldName}`}
+                                type='number'
+                                value={typeof value === 'number' || typeof value === 'string' ? value : ''}
+                                onChange={(e) => handleVatAnswerChange(question.fieldName, e.target.value ? Number(e.target.value) : '')}
+                              />
+                              {question.unit && (
+                                <span className='flex items-center rounded-md border bg-gray-50 px-3 text-sm text-gray-600'>
+                                  {question.unit}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {question.answerType === 'yes_no' && (
+                            <RadioGroup
+                              value={value === true ? 'yes' : value === false ? 'no' : ''}
+                              onValueChange={(next) => handleVatAnswerChange(question.fieldName, next === 'yes')}
+                              className='flex gap-4'
+                            >
+                              <div className='flex items-center space-x-2'>
+                                <RadioGroupItem value='yes' id={`vat-${question.fieldName}-yes`} />
+                                <Label htmlFor={`vat-${question.fieldName}-yes`} className='font-normal'>Yes</Label>
+                              </div>
+                              <div className='flex items-center space-x-2'>
+                                <RadioGroupItem value='no' id={`vat-${question.fieldName}-no`} />
+                                <Label htmlFor={`vat-${question.fieldName}-no`} className='font-normal'>No</Label>
+                              </div>
+                            </RadioGroup>
+                          )}
+
+                          {question.answerType === 'checkboxes' && (
+                            <div className='space-y-2'>
+                              {(question.options || []).map((option) => {
+                                const selected = Array.isArray(value) && value.includes(option);
+                                return (
+                                  <label key={option} className='flex items-center gap-2 text-sm'>
+                                    <Checkbox
+                                      checked={selected}
+                                      onCheckedChange={(checked) => {
+                                        const current = Array.isArray(value) ? value : [];
+                                        handleVatAnswerChange(
+                                          question.fieldName,
+                                          checked
+                                            ? [...current, option]
+                                            : current.filter(item => item !== option)
+                                        );
+                                      }}
+                                    />
+                                    {option}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Additional Notes */}
                 <div className='space-y-2 pt-4 border-t'>

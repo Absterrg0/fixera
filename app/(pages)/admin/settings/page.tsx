@@ -18,6 +18,14 @@ export default function AdminSettingsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [commissionPercent, setCommissionPercent] = useState<number>(0)
+  const [companyVatNumber, setCompanyVatNumber] = useState('')
+  const [companyAddress, setCompanyAddress] = useState({
+    name: 'Fixera',
+    street: '',
+    city: '',
+    postalCode: '',
+    country: 'Belgium',
+  })
   const [lastModified, setLastModified] = useState<string | null>(null)
   const [version, setVersion] = useState<number>(0)
 
@@ -40,6 +48,14 @@ export default function AdminSettingsPage() {
           return
         }
         setCommissionPercent(data.data.commissionPercent)
+        setCompanyVatNumber(data.data.companyVatNumber || '')
+        setCompanyAddress({
+          name: data.data.companyAddress?.name || 'Fixera',
+          street: data.data.companyAddress?.street || '',
+          city: data.data.companyAddress?.city || '',
+          postalCode: data.data.companyAddress?.postalCode || '',
+          country: data.data.companyAddress?.country || 'Belgium',
+        })
         setLastModified(data.data.lastModified)
         setVersion(data.data.version)
       } else {
@@ -71,7 +87,7 @@ export default function AdminSettingsPage() {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ commissionPercent })
+        body: JSON.stringify({ commissionPercent, companyVatNumber, companyAddress })
       })
 
       if (response.ok) {
@@ -81,6 +97,14 @@ export default function AdminSettingsPage() {
           return
         }
         setCommissionPercent(data.data.commissionPercent)
+        setCompanyVatNumber(data.data.companyVatNumber || '')
+        setCompanyAddress({
+          name: data.data.companyAddress?.name || 'Fixera',
+          street: data.data.companyAddress?.street || '',
+          city: data.data.companyAddress?.city || '',
+          postalCode: data.data.companyAddress?.postalCode || '',
+          country: data.data.companyAddress?.country || 'Belgium',
+        })
         setLastModified(data.data.lastModified)
         setVersion(data.data.version)
         toast.success('Platform settings updated successfully')
@@ -194,6 +218,64 @@ export default function AdminSettingsPage() {
                   <div>
                     <span className="text-gray-500">Professional receives:</span>{' '}
                     <span className="font-semibold text-green-600">&euro;{professionalAmount.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t pt-6 space-y-4">
+                <div>
+                  <h2 className="text-base font-semibold text-gray-900">Invoice issuer</h2>
+                  <p className="text-sm text-gray-500">Fixera company details printed on generated invoices.</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="company-name">Company Name</Label>
+                    <Input
+                      id="company-name"
+                      value={companyAddress.name}
+                      onChange={(e) => setCompanyAddress(prev => ({ ...prev, name: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="company-vat">VAT Number</Label>
+                    <Input
+                      id="company-vat"
+                      value={companyVatNumber}
+                      onChange={(e) => setCompanyVatNumber(e.target.value)}
+                      placeholder="BE..."
+                    />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="company-street">Street Address</Label>
+                    <Input
+                      id="company-street"
+                      value={companyAddress.street}
+                      onChange={(e) => setCompanyAddress(prev => ({ ...prev, street: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="company-city">City</Label>
+                    <Input
+                      id="company-city"
+                      value={companyAddress.city}
+                      onChange={(e) => setCompanyAddress(prev => ({ ...prev, city: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="company-postal">Postal Code</Label>
+                    <Input
+                      id="company-postal"
+                      value={companyAddress.postalCode}
+                      onChange={(e) => setCompanyAddress(prev => ({ ...prev, postalCode: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="company-country">Country</Label>
+                    <Input
+                      id="company-country"
+                      value={companyAddress.country}
+                      onChange={(e) => setCompanyAddress(prev => ({ ...prev, country: e.target.value }))}
+                    />
                   </div>
                 </div>
               </div>
