@@ -1,7 +1,8 @@
 // firebase-messaging-sw.js
 // Handles background push notifications from FCM.
-// Firebase config is injected at runtime by FCMProvider via postMessage.
+// Config is baked in at build time; FCMProvider may also refresh it via postMessage.
 
+importScripts('/firebase-messaging-sw-config.js');
 importScripts('https://www.gstatic.com/firebasejs/12.15.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/12.15.0/firebase-messaging-compat.js');
 

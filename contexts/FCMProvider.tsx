@@ -148,6 +148,15 @@ export const FCMProvider: React.FC<FCMProviderProps> = ({ isAuthenticated, child
     }
   }, []);
 
+  const bootstrapFcm = useCallback(async (): Promise<boolean> => {
+    const swReg = await registerServiceWorker();
+    if (!swReg) return false;
+
+    await obtainToken(swReg);
+    setPermissionGranted(true);
+    return true;
+  }, [obtainToken]);
+
   // ------------------------------------------------------------------
   // Request permission imperatively (called by UI prompt)
   // ------------------------------------------------------------------
@@ -155,22 +164,16 @@ export const FCMProvider: React.FC<FCMProviderProps> = ({ isAuthenticated, child
     if (typeof window === 'undefined' || !('Notification' in window)) return false;
 
     if (Notification.permission === 'granted') {
-      setPermissionGranted(true);
-      return true;
+      return bootstrapFcm();
     }
 
     const result = await Notification.requestPermission();
     if (result === 'granted') {
-      setPermissionGranted(true);
-
-      const swReg = await registerServiceWorker();
-      if (swReg) await obtainToken(swReg);
-
-      return true;
+      return bootstrapFcm();
     }
 
     return false;
-  }, [obtainToken]);
+  }, [bootstrapFcm]);
 
   // ------------------------------------------------------------------
   // Initialise on first mount (when user is authenticated)
@@ -183,16 +186,13 @@ export const FCMProvider: React.FC<FCMProviderProps> = ({ isAuthenticated, child
     initialised.current = true;
 
     const init = async () => {
-      const permission = Notification.permission;
-      if (permission === 'granted') {
-        setPermissionGranted(true);
-        const swReg = await registerServiceWorker();
-        if (swReg) await obtainToken(swReg);
+      if (Notification.permission === 'granted') {
+        await bootstrapFcm();
       }
     };
 
     init();
-  }, [isAuthenticated, obtainToken]);
+  }, [isAuthenticated, bootstrapFcm]);
 
   // ------------------------------------------------------------------
   // Foreground message listener

@@ -1444,6 +1444,24 @@ export default function ProfilePage() {
     return events
   }, [companyBlockedRanges])
 
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (!tab) return
+
+    const isProfessional = user?.role === 'professional'
+    const professionalTabs = new Set([
+      'profile', 'business', 'documents', 'payments', 'employees',
+      'personal-availability', 'company-availability', 'security', 'notifications',
+    ])
+    const customerTabs = new Set(['profile', 'security', 'notifications'])
+
+    if (isProfessional && professionalTabs.has(tab)) {
+      setProfileTab(tab)
+    } else if (!isProfessional && (customerTabs.has(tab) || (tab === 'availability' && user?.role === 'employee'))) {
+      setProfileTab(tab)
+    }
+  }, [searchParams, user?.role])
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -1507,23 +1525,6 @@ export default function ProfilePage() {
     stripeAccountStatus?.chargesEnabled &&
     stripePayoutsEnabled
   )
-
-  useEffect(() => {
-    const tab = searchParams.get('tab')
-    if (!tab) return
-
-    const professionalTabs = new Set([
-      'profile', 'business', 'documents', 'payments', 'employees',
-      'personal-availability', 'company-availability', 'security', 'notifications',
-    ])
-    const customerTabs = new Set(['profile', 'security', 'notifications'])
-
-    if (isProfessional && professionalTabs.has(tab)) {
-      setProfileTab(tab)
-    } else if (!isProfessional && (customerTabs.has(tab) || (tab === 'availability' && user?.role === 'employee'))) {
-      setProfileTab(tab)
-    }
-  }, [searchParams, isProfessional, user?.role])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
