@@ -44,40 +44,32 @@ const VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY ?? '';
 const FETCH_TIMEOUT_MS = 15_000;
 const SW_ACTIVATION_TIMEOUT_MS = 10_000;
 
-async function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
-  const signal =
-    typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal
-      ? AbortSignal.timeout(FETCH_TIMEOUT_MS)
-      : (() => {
-          const controller = new AbortController();
-          setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-          return controller.signal;
-        })();
-
-  try {
-    return await fetch(url, { ...options, signal });
-  } catch (err) {
-    if (err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
-      throw new Error('FCM token request timed out');
-    }
-    throw err;
-  }
-}
-
 async function saveTokenToServer(token: string): Promise<void> {
   const authToken = getAuthToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
 
-  const response = await fetchWithTimeout(`${BACKEND_URL}/api/user/fcm/token`, {
-    method: 'POST',
-    credentials: 'include',
-    headers,
-    body: JSON.stringify({ token, origin: window.location.origin }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/user/fcm/token`, {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify({ token, origin: window.location.origin }),
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    throw new Error(`FCM token registration failed: ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`FCM token registration failed: ${response.status}`);
+    }
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('FCM token request timed out');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -86,15 +78,27 @@ async function removeTokenFromServer(token: string): Promise<void> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
 
-  const response = await fetchWithTimeout(`${BACKEND_URL}/api/user/fcm/token`, {
-    method: 'DELETE',
-    credentials: 'include',
-    headers,
-    body: JSON.stringify({ token }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/user/fcm/token`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify({ token }),
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    throw new Error(`FCM token removal failed: ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`FCM token removal failed: ${response.status}`);
+    }
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('FCM token request timed out');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
