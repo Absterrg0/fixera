@@ -94,7 +94,7 @@ async function removeTokenFromServer(token: string): Promise<void> {
 }
 
 function injectFirebaseConfigIntoSw(worker: ServiceWorker | null): void {
-  if (!worker || !firebaseConfig.apiKey) return;
+  if (!worker || !firebaseConfig.apiKey || !firebaseConfig.projectId) return;
   worker.postMessage({ type: 'FIREBASE_CONFIG', config: firebaseConfig });
 }
 
